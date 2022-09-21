@@ -1,4 +1,4 @@
-﻿using System;
+﻿using System; 
 using QtWidgets;
 
 namespace ParatextQtPOC
@@ -13,12 +13,14 @@ namespace ParatextQtPOC
                 QApplication qtApp = new QApplication(ref count, null);
             }
 
-            MainWindow mainWindow = new MainWindow();
-            mainWindow.Show();
+            //MainWindow mainWindow = new MainWindow();
+            //mainWindow.Show();
+
+            TextEdit textEdit = new TextEdit();
+            textEdit.Show();
+            textEdit.LoadUsfm();
 
             QApplication.Exec();
-
-            Console.WriteLine("Hello World!");
         }
     }
 }
