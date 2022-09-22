@@ -1,4 +1,5 @@
-﻿using System; 
+﻿using System;
+using Paratext.Data;
 using QtWidgets;
 
 namespace ParatextQtPOC
@@ -7,6 +8,8 @@ namespace ParatextQtPOC
     {
         static void Main(string[] args)
         {
+            ParatextData.Initialize();
+
             int count = 0;
             unsafe
             {

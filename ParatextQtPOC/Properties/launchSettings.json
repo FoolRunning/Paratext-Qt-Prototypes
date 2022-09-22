@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "ParatextQtPOC": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
