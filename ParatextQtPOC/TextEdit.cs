@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using System.Text;
-using System.Text.RegularExpressions;
+using Paratext.Data;
+using PtxUtils;
 using QtCore;
 using QtCore.Qt;
 using QtGui;
 using QtWidgets;
+using SIL.Scripture;
 
 namespace ParatextQtPOC
 {
@@ -14,66 +16,131 @@ namespace ParatextQtPOC
     /// This is main application window
     /// More info here [QMainWindow](http://doc.qt.io/qt-5/qmainwindow.html#details)
     /// </summary>
-    internal class TextEdit : QMainWindow{
+    internal class TextEdit : QMainWindow
+    {
+        public const int SPECIAL_PROPERTY = 0x1000F1;
+        public const int SPECIAL_VERSE = 1;
+        public const int SPECIAL_FOOTNOTE_CALLER = 2;
+        //public const int SPECIAL_ANNOTATION_ICON = 30;
 
-        private QTextEdit textEdit;
+        private const string PROJECT_TO_LOAD = "TPTS";
+
+        private readonly QTextBrowser textEdit;
+        private readonly QComboBox bookSelector;
+        private readonly Dictionary<string, Annotation> annotationsInView = new Dictionary<string, Annotation>();
+        private ScrText scrText;
 
         public TextEdit()
         {
-            WindowTitle = "Test application";
+            scrText = ScrTextCollection.Get(PROJECT_TO_LOAD);
 
-            textEdit = new QTextEdit(this);
+            WindowTitle = $"ParaNext™️ ({scrText.Name})";
+            QToolBar toolbar = new QToolBar();
+            toolbar.Floatable = false;
+            toolbar.Movable = false;
+
+            bookSelector = new QComboBox();
+            bookSelector.Font = new QFont("Arial", 15);
+            bookSelector.CurrentIndexChanged += BookSelector_CurrentIndexChanged;
+            bookSelector.AddItem("Select book");
+            foreach (int bookNum in scrText.Settings.BooksPresentSet.SelectedBookNumbers)
+                bookSelector.AddItem(Canon.BookNumberToEnglishName(bookNum), bookNum);
+            bookSelector.CurrentIndex = 0;
+            toolbar.AddWidget(bookSelector);
+
+            QPushButton saveButton = new QPushButton("Save");
+            saveButton.Clicked += SaveButton_Clicked;
+            toolbar.AddWidget(saveButton);
+
+            AddToolBar(toolbar);
+
+            textEdit = new QTextBrowser(this);
+            textEdit.UndoRedoEnabled = true;
+            textEdit.ReadOnly = false;
+            textEdit.OpenLinks = false;
+            textEdit.OpenExternalLinks = false;
+            textEdit.TextInteractionFlags |= TextInteractionFlag.LinksAccessibleByMouse;
+            textEdit.AnchorClicked += TextEdit_AnchorClicked;
 
             CentralWidget = textEdit;
-            Resize(640, 480);
+            Resize(1024, 768);
         }
-        
-        public void LoadUsfm()
+
+        private void SaveButton_Clicked(bool isChecked)
         {
-            string fileName = Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName + "/resources/19PSAwgPIDGIN.SFM";
-            string dataString = File.ReadAllText(fileName);
-
-            const bool rtl = false;
-
-            QTextCharFormat markerFormat = new QTextCharFormat();
-            markerFormat.Foreground = new QBrush(GlobalColor.Red);
-
-            QTextCharFormat textFormat = new QTextCharFormat();
-            textFormat.Font = new QFont("Calibri", rtl ? 36 : 12);
-
-            Regex regex = new Regex(@"((\\x.*\*)|(\\[\w][\w\d]*[ \*\n\r])|([^\\]+))");
-
-            QTextDocument doc = textEdit.Document;
-            QTextCursor cursor = new QTextCursor(doc);
-
-            QImage icon = new QImage(Directory.GetParent(Environment.CurrentDirectory).Parent.Parent.FullName + "/resources/dice.png");
-
-            Console.WriteLine("Starting loading");
-
-            //cursor.BeginEditBlock(); // Using this slows down loading the application significantly: 13s -> 70s
-
-            foreach (Match itemMatch in regex.Matches(dataString))
+            using (TextWriter writer = new StreamWriter("./Temp.sfm"))
             {
-                string matchString = itemMatch.ToString();
-                if (matchString.Contains(@"\x"))
+                QTextBlock block = textEdit.Document.Begin();
+                while (block != textEdit.Document.End())
                 {
-                    cursor.InsertText("*", markerFormat);
-                    // Do something with footnotes
-                }
-                else if (matchString.StartsWith('\\'))
-                {
-                    cursor.InsertText(rtl ? "\u200f" : "" + matchString, markerFormat);
-                }
-                else
-                {
-                    cursor.InsertImage(icon);
-                    cursor.InsertText(matchString, textFormat);
+                    QTextBlock.Iterator iterator;
+                    for (iterator = block.Begin(); !iterator.AtEnd; iterator++)
+                    {
+                        QTextFragment fragment = iterator.Fragment;
+                        if (fragment.CharFormat.HasProperty(SPECIAL_PROPERTY))
+                        {
+                            switch (fragment.CharFormat.property(SPECIAL_PROPERTY).ToInt())
+                            {
+                                case SPECIAL_VERSE: 
+                                    writer.WriteLine();
+                                    writer.Write(fragment.Text);
+                                    break;
+                                case SPECIAL_FOOTNOTE_CALLER:
+                                    writer.Write(fragment.CharFormat.ToolTip);
+                                    break;
+                            }
+                        }
+                        else if (fragment.Text.Length > 1 || !fragment.Text.StartsWith(StringUtils.orcCharacter))
+                            writer.Write(fragment.Text);
+                    }
+                    
+                    writer.WriteLine();
+
+                    block = block.Next;
                 }
             }
+        }
 
+        private void TextEdit_AnchorClicked(QUrl linkUrl)
+        {
+            string[] parts = linkUrl.ToString().ToLowerInvariant().Split(':');
+            if (parts[0] == "annotation" || parts[0] == "annotationicon")
+            {
+                string annotationId =  parts[1];
+                Annotation annotationClicked = annotationsInView[annotationId];
+                annotationClicked.Click(1, parts[0] == "annotationicon", null, new Coordinates(0, 0));
+            }
+        }
+
+        private void BookSelector_CurrentIndexChanged(int index)
+        {
+            if (textEdit == null)
+                return; // Still initializing window
+
+            textEdit.Document.Clear();
+            if (index > 0)
+            {
+                int bookNum = bookSelector.ItemData(index).ToInt();
+                LoadUsfm(bookNum);
+            }
+        }
+
+        public void LoadUsfm(int bookNum)
+        {
+            AnnotationSource[] annotationSources = { new NotesAnnotationSource(scrText) };
+            
+            QTextDocument doc = textEdit.Document;
+            QTextCursor cursor = new QTextCursor(doc);
+            Debug.Assert(cursor.AtStart);
+
+            List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
+            UsfmParser parser = new UsfmParser(scrText.ScrStylesheet(bookNum), tokens,
+                new VerseRef(bookNum, 1, 0, scrText.Settings.Versification), 
+                new TextEditUsfmLoad(scrText, bookNum, cursor, annotationSources, annotationsInView));
+
+            //cursor.BeginEditBlock();
+            parser.ProcessTokens();
             //cursor.EndEditBlock();
-
-            Console.WriteLine("Finished loading");
         }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text;
 using Paratext.Data;
 using QtWidgets;
 
@@ -8,6 +9,8 @@ namespace ParatextQtPOC
     {
         static void Main(string[] args)
         {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
             ParatextData.Initialize();
 
             int count = 0;
@@ -21,7 +24,6 @@ namespace ParatextQtPOC
 
             TextEdit textEdit = new TextEdit();
             textEdit.Show();
-            textEdit.LoadUsfm();
 
             QApplication.Exec();
         }
