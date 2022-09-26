@@ -85,6 +85,8 @@ namespace ParatextQtPOC
                 bookSelector.AddItem(Canon.BookNumberToEnglishName(bookNum), bookNum);
             bookSelector.CurrentIndex = 0;
             bookSelector.Enabled = scrText.Settings.BooksPresentSet.Count > 0;
+            textEdit.LayoutDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
+            textEdit.Alignment = scrText.RightToLeft ? AlignmentFlag.AlignRight | AlignmentFlag.AlignAbsolute : AlignmentFlag.AlignLeft;
         }
 
         private void SaveButton_Clicked(bool isChecked)
@@ -139,6 +141,7 @@ namespace ParatextQtPOC
                 return; // Still initializing window
 
             textEdit.Document.Clear();
+            textEdit.Document.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
             if (index > 0)
             {
                 int bookNum = bookSelector.ItemData(index).ToInt();

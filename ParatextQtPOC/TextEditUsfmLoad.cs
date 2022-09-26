@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Paratext.Data;
+using PtxUtils;
 using QtCore.Qt;
 using QtGui;
 
@@ -11,6 +12,7 @@ namespace ParatextQtPOC
     public sealed class TextEditUsfmLoad : UsfmParserSink
     {
         #region Member variables
+        private readonly ScrText scrText;
         private readonly Dictionary<string, ParagraphStyleInfo> paragraphMarkerFormat = new Dictionary<string, ParagraphStyleInfo>();
         private readonly Dictionary<string, QTextCharFormat> characterMarkerFormat = new Dictionary<string, QTextCharFormat>();
         private readonly List<Annotation> currentVerseAnnotations = new List<Annotation>();
@@ -37,7 +39,7 @@ namespace ParatextQtPOC
         public TextEditUsfmLoad(ScrText scrText, int bookNum, QTextCursor cursor, IList<AnnotationSource> annotationSources, 
             Dictionary<string, Annotation> createdAnnotations)
         {
-            
+            this.scrText = scrText;
             this.cursor = cursor;
             this.annotationSources = annotationSources;
             this.createdAnnotations = createdAnnotations;
@@ -117,7 +119,8 @@ namespace ParatextQtPOC
                     cursor.InsertBlock(styleInfo.ParaFormat, styleInfo.CharFormat);
             }
 
-            cursor.InsertText($"\\{marker} ", markerFormat);
+            string beginning = scrText.RightToLeft ? StringUtils.rtlMarker.ToString() : "";
+            cursor.InsertText($"{beginning}\\{marker} ", markerFormat);
         }
 
         public override void StartChar(UsfmParserState state, string markerWithoutPlus, bool closed, bool unknown,
@@ -256,7 +259,7 @@ namespace ParatextQtPOC
         #endregion
 
         #region Private helper methods
-        private static QTextBlockFormat CreateParagraphStyleFromTag(ScrTag tag)
+        private QTextBlockFormat CreateParagraphStyleFromTag(ScrTag tag)
         {
             QTextBlockFormat paraFormat = new QTextBlockFormat();
             if (tag.RawJustificationType != null)
@@ -274,10 +277,22 @@ namespace ParatextQtPOC
                 paraFormat.TextIndent = tag.FirstLineIndent * 40 / 100.0; // 40 is the default indent
 
             if (tag.RawLeftMargin != null)
-                paraFormat.LeftMargin = tag.LeftMargin * 40 / 100.0; // 40 is the default indent
+            {
+                double margin = tag.LeftMargin * 40 / 100.0; // 40 is the default indent
+                if (scrText.RightToLeft)
+                    paraFormat.RightMargin = margin;
+                else
+                    paraFormat.LeftMargin = margin;
+            }
 
             if (tag.RawRightMargin != null)
-                paraFormat.RightMargin = tag.LeftMargin * 40 / 100.0; // 40 is the default indent
+            {
+                double margin = tag.RightMargin * 40 / 100.0; // 40 is the default indent
+                if (scrText.RightToLeft)
+                    paraFormat.LeftMargin = margin;
+                else
+                    paraFormat.RightMargin = margin;
+            }
 
             if (tag.RawLineSpacing != null)
                 paraFormat.SetLineHeight(tag.LineSpacing * 100, (int)QTextBlockFormat.LineHeightTypes.ProportionalHeight);
