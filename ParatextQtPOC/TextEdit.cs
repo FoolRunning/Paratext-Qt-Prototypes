@@ -23,29 +23,34 @@ namespace ParatextQtPOC
         public const int SPECIAL_FOOTNOTE_CALLER = 2;
         //public const int SPECIAL_ANNOTATION_ICON = 30;
 
-        private const string PROJECT_TO_LOAD = "TPTS";
-
         private readonly QTextBrowser textEdit;
         private readonly QComboBox bookSelector;
+        private readonly QComboBox projectSelector;
         private readonly Dictionary<string, Annotation> annotationsInView = new Dictionary<string, Annotation>();
         private ScrText scrText;
 
         public TextEdit()
         {
-            scrText = ScrTextCollection.Get(PROJECT_TO_LOAD);
-
-            WindowTitle = $"ParaNext™️ ({scrText.Name})";
+            WindowTitle = $"ParaNext™️";
             QToolBar toolbar = new QToolBar();
             toolbar.Floatable = false;
             toolbar.Movable = false;
 
+            projectSelector = new QComboBox();
+            projectSelector.Font = new QFont("Arial", 15);
+            projectSelector.AddItem("Select project");
+            foreach (ScrText scr in ScrTextCollection.ScrTexts(IncludeProjects.ScriptureOnly))
+                projectSelector.AddItem(scr.ToString(), scr.Guid.ToString());
+            projectSelector.CurrentIndex = 0;
+            projectSelector.CurrentIndexChanged += ProjectSelector_CurrentIndexChanged;
+            toolbar.AddWidget(projectSelector);
+
             bookSelector = new QComboBox();
             bookSelector.Font = new QFont("Arial", 15);
-            bookSelector.CurrentIndexChanged += BookSelector_CurrentIndexChanged;
             bookSelector.AddItem("Select book");
-            foreach (int bookNum in scrText.Settings.BooksPresentSet.SelectedBookNumbers)
-                bookSelector.AddItem(Canon.BookNumberToEnglishName(bookNum), bookNum);
             bookSelector.CurrentIndex = 0;
+            bookSelector.Enabled = false;
+            bookSelector.CurrentIndexChanged += BookSelector_CurrentIndexChanged;
             toolbar.AddWidget(bookSelector);
 
             QPushButton saveButton = new QPushButton("Save");
@@ -64,6 +69,22 @@ namespace ParatextQtPOC
 
             CentralWidget = textEdit;
             Resize(1024, 768);
+        }
+
+        private void ProjectSelector_CurrentIndexChanged(int index)
+        {
+            if (textEdit == null)
+                return; // Still initializing window
+
+            scrText = ScrTextCollection.GetById(HexId.FromStr(projectSelector.ItemData(index).ToString()));
+            WindowTitle = $"ParaNext™️ ({scrText.Name})";
+
+            bookSelector.Clear();
+            bookSelector.AddItem("Select book");
+            foreach (int bookNum in scrText.Settings.BooksPresentSet.SelectedBookNumbers)
+                bookSelector.AddItem(Canon.BookNumberToEnglishName(bookNum), bookNum);
+            bookSelector.CurrentIndex = 0;
+            bookSelector.Enabled = scrText.Settings.BooksPresentSet.Count > 0;
         }
 
         private void SaveButton_Clicked(bool isChecked)
