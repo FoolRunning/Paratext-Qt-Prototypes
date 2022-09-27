@@ -19,6 +19,9 @@ namespace ParatextQtPOC
     internal class TextEdit : QMainWindow
     {
         public const int SPECIAL_PROPERTY = 0x1000F1;
+        public const int VERSE_ID_PROPERTY = 0x1000F2;
+        public const int PARAGRAPH_MARKER_PROPERTY = 0x1000F3;
+        public const int IGNORE_FRAGMENT_PROPERTY = 0x1000F4;
         public const int SPECIAL_VERSE = 1;
         public const int SPECIAL_FOOTNOTE_CALLER = 2;
         //public const int SPECIAL_ANNOTATION_ICON = 30;
@@ -26,6 +29,7 @@ namespace ParatextQtPOC
         private readonly QTextBrowser textEdit;
         private readonly QComboBox bookSelector;
         private readonly QComboBox projectSelector;
+        private readonly QLabel referenceLabel;
         private readonly Dictionary<string, Annotation> annotationsInView = new Dictionary<string, Annotation>();
         private ScrText scrText;
 
@@ -37,7 +41,7 @@ namespace ParatextQtPOC
             toolbar.Movable = false;
 
             projectSelector = new QComboBox();
-            projectSelector.Font = new QFont("Arial", 15);
+            projectSelector.Font = new QFont("Arial", 13);
             projectSelector.AddItem("Select project");
             foreach (ScrText scr in ScrTextCollection.ScrTexts(IncludeProjects.ScriptureOnly))
                 projectSelector.AddItem(scr.ToString(), scr.Guid.ToString());
@@ -46,12 +50,17 @@ namespace ParatextQtPOC
             toolbar.AddWidget(projectSelector);
 
             bookSelector = new QComboBox();
-            bookSelector.Font = new QFont("Arial", 15);
+            bookSelector.Font = new QFont("Arial", 13);
             bookSelector.AddItem("Select book");
             bookSelector.CurrentIndex = 0;
             bookSelector.Enabled = false;
             bookSelector.CurrentIndexChanged += BookSelector_CurrentIndexChanged;
             toolbar.AddWidget(bookSelector);
+
+            referenceLabel = new QLabel();
+            referenceLabel.Font = new QFont("Arial", 15);
+            referenceLabel.Text = "Reference: ()";
+            toolbar.AddWidget(referenceLabel);
 
             QPushButton saveButton = new QPushButton("Save");
             saveButton.Clicked += SaveButton_Clicked;
@@ -66,14 +75,34 @@ namespace ParatextQtPOC
             textEdit.OpenExternalLinks = false;
             textEdit.TextInteractionFlags |= TextInteractionFlag.LinksAccessibleByMouse;
             textEdit.AnchorClicked += TextEdit_AnchorClicked;
+            textEdit.CursorPositionChanged += TextEdit_CursorPositionChanged;
 
             CentralWidget = textEdit;
             Resize(1024, 768);
         }
 
+        private void TextEdit_CursorPositionChanged()
+        {
+            QTextCursor cursor = textEdit.TextCursor;
+            string lastReference = null;
+            QTextBlock block = cursor.Block;
+            QTextBlock.Iterator iterator;
+            for (iterator = block.Begin(); !iterator.AtEnd; iterator++)
+            {
+                QTextFragment fragment = iterator.Fragment;
+                if (fragment.Position > cursor.Position)
+                    break;
+
+                if (fragment.CharFormat.HasProperty(VERSE_ID_PROPERTY))
+                    lastReference = fragment.CharFormat.property(VERSE_ID_PROPERTY).ToString();
+            }
+
+            referenceLabel.Text = $"Reference: ({lastReference ?? "Unknown"})";
+        }
+
         private void ProjectSelector_CurrentIndexChanged(int index)
         {
-            if (textEdit == null)
+            if (textEdit == null || index == 0)
                 return; // Still initializing window
 
             scrText = ScrTextCollection.GetById(HexId.FromStr(projectSelector.ItemData(index).ToString()));
@@ -96,6 +125,9 @@ namespace ParatextQtPOC
                 QTextBlock block = textEdit.Document.Begin();
                 while (block != textEdit.Document.End())
                 {
+                    //string marker = block.BlockFormat.property(PARAGRAPH_MARKER_PROPERTY).ToString();
+                    //writer.Write($"\\{marker} ");
+
                     QTextBlock.Iterator iterator;
                     for (iterator = block.Begin(); !iterator.AtEnd; iterator++)
                     {
@@ -113,7 +145,7 @@ namespace ParatextQtPOC
                                     break;
                             }
                         }
-                        else if (fragment.Text.Length > 1 || !fragment.Text.StartsWith(StringUtils.orcCharacter))
+                        else if (/*!fragment.CharFormat.HasProperty(IGNORE_FRAGMENT_PROPERTY) &&*/ (fragment.Text.Length > 1 || !fragment.Text.StartsWith(StringUtils.orcCharacter)))
                             writer.Write(fragment.Text);
                     }
                     

@@ -50,6 +50,7 @@ namespace ParatextQtPOC
 
             markerFormat.Foreground = new QBrush(GlobalColor.DarkGray);
             markerFormat.Font = new QFont("Arial", 14);
+            markerFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, 1);
 
             callerFormat.Foreground = new QBrush(GlobalColor.DarkBlue);
             callerFormat.Font = new QFont(defaultFont.DefaultFamily, defaultFont.PointSize, (int)QFont.Weight.Bold);
@@ -119,8 +120,11 @@ namespace ParatextQtPOC
                     cursor.InsertBlock(styleInfo.ParaFormat, styleInfo.CharFormat);
             }
 
+            QTextCharFormat verseId = new QTextCharFormat(markerFormat);
+            verseId.SetProperty(TextEdit.VERSE_ID_PROPERTY, state.VerseRef.ToString());
+
             string beginning = scrText.RightToLeft ? StringUtils.rtlMarker.ToString() : "";
-            cursor.InsertText($"{beginning}\\{marker} ", markerFormat);
+            cursor.InsertText($"{beginning}\\{marker} ", verseId);
         }
 
         public override void StartChar(UsfmParserState state, string markerWithoutPlus, bool closed, bool unknown,
@@ -136,9 +140,12 @@ namespace ParatextQtPOC
             currentCharFormat = GetCharStyleForMarker(markerWithoutPlus);
             QTextCharFormat mergedFormat = new QTextCharFormat(currentCharFormat);
             mergedFormat.Merge(markerFormat);
-            
+
             if (markerWithoutPlus == "v")
+            {
                 mergedFormat.SetProperty(TextEdit.SPECIAL_PROPERTY, TextEdit.SPECIAL_VERSE);
+                mergedFormat.SetProperty(TextEdit.VERSE_ID_PROPERTY, state.VerseRef.ToString());
+            }
 
             cursor.InsertText($"\\{markerWithoutPlus} ", mergedFormat);
         }
@@ -262,6 +269,8 @@ namespace ParatextQtPOC
         private QTextBlockFormat CreateParagraphStyleFromTag(ScrTag tag)
         {
             QTextBlockFormat paraFormat = new QTextBlockFormat();
+            paraFormat.SetProperty(TextEdit.PARAGRAPH_MARKER_PROPERTY, tag.Marker);
+
             if (tag.RawJustificationType != null)
             {
                 switch (tag.JustificationType)
