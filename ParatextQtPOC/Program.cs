@@ -7,6 +7,7 @@ namespace ParatextQtPOC
 {
     class Program
     {
+        [STAThread]
         static void Main(string[] args)
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
