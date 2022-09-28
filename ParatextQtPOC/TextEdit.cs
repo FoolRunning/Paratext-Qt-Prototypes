@@ -194,9 +194,9 @@ namespace ParatextQtPOC
                 new VerseRef(bookNum, 1, 0, scrText.Settings.Versification), 
                 new TextEditUsfmLoad(scrText, bookNum, cursor, annotationSources, annotationsInView));
 
-            //cursor.BeginEditBlock();
+            cursor.BeginEditBlock();
             parser.ProcessTokens();
-            //cursor.EndEditBlock();
+            cursor.EndEditBlock();
         }
     }
 }
