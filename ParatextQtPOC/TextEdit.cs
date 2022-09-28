@@ -41,7 +41,7 @@ namespace ParatextQtPOC
             toolbar.Movable = false;
 
             projectSelector = new QComboBox();
-            projectSelector.Font = new QFont("Arial", 13);
+            projectSelector.Font = new QFont("Arial", 12);
             projectSelector.AddItem("Select project");
             foreach (ScrText scr in ScrTextCollection.ScrTexts(IncludeProjects.ScriptureOnly))
                 projectSelector.AddItem(scr.ToString(), scr.Guid.ToString());
@@ -50,21 +50,21 @@ namespace ParatextQtPOC
             toolbar.AddWidget(projectSelector);
 
             bookSelector = new QComboBox();
-            bookSelector.Font = new QFont("Arial", 13);
+            bookSelector.Font = new QFont("Arial", 12);
             bookSelector.AddItem("Select book");
             bookSelector.CurrentIndex = 0;
             bookSelector.Enabled = false;
             bookSelector.CurrentIndexChanged += BookSelector_CurrentIndexChanged;
             toolbar.AddWidget(bookSelector);
 
+            QPushButton saveButton = new QPushButton("Save");
+            saveButton.Clicked += SaveButton_Clicked;
+            toolbar.AddWidget(saveButton);
+
             referenceLabel = new QLabel();
             referenceLabel.Font = new QFont("Arial", 15);
             referenceLabel.Text = "Reference: ()";
             toolbar.AddWidget(referenceLabel);
-
-            QPushButton saveButton = new QPushButton("Save");
-            saveButton.Clicked += SaveButton_Clicked;
-            toolbar.AddWidget(saveButton);
 
             AddToolBar(toolbar);
 
@@ -74,6 +74,7 @@ namespace ParatextQtPOC
             textEdit.OpenLinks = false;
             textEdit.OpenExternalLinks = false;
             textEdit.TextInteractionFlags |= TextInteractionFlag.LinksAccessibleByMouse;
+            textEdit.Enabled = false;
             textEdit.AnchorClicked += TextEdit_AnchorClicked;
             textEdit.CursorPositionChanged += TextEdit_CursorPositionChanged;
 
@@ -92,7 +93,7 @@ namespace ParatextQtPOC
                 QTextFragment fragment = iterator.Fragment;
                 if (fragment.Position > cursor.Position)
                     break;
-
+                
                 if (fragment.CharFormat.HasProperty(VERSE_ID_PROPERTY))
                     lastReference = fragment.CharFormat.property(VERSE_ID_PROPERTY).ToString();
             }
@@ -174,6 +175,7 @@ namespace ParatextQtPOC
 
             textEdit.Document.Clear();
             textEdit.Document.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
+            textEdit.Enabled = index > 0;
             if (index > 0)
             {
                 int bookNum = bookSelector.ItemData(index).ToInt();
@@ -185,6 +187,7 @@ namespace ParatextQtPOC
         {
             AnnotationSource[] annotationSources = { new NotesAnnotationSource(scrText) };
             
+            Stopwatch sw = Stopwatch.StartNew();
             QTextDocument doc = textEdit.Document;
             QTextCursor cursor = new QTextCursor(doc);
             Debug.Assert(cursor.AtStart);
@@ -197,6 +200,9 @@ namespace ParatextQtPOC
             cursor.BeginEditBlock();
             parser.ProcessTokens();
             cursor.EndEditBlock();
+
+            sw.Stop();
+            Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} took {sw.ElapsedMilliseconds}ms");
         }
     }
 }

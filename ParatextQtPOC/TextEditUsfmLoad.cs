@@ -13,10 +13,7 @@ namespace ParatextQtPOC
     {
         #region Member variables
         private readonly ScrText scrText;
-        private readonly Dictionary<string, ParagraphStyleInfo> paragraphMarkerFormat = new Dictionary<string, ParagraphStyleInfo>();
-        private readonly Dictionary<string, QTextCharFormat> characterMarkerFormat = new Dictionary<string, QTextCharFormat>();
         private readonly List<Annotation> currentVerseAnnotations = new List<Annotation>();
-        private readonly QFont defaultFont;
         private readonly QTextCharFormat markerFormat = new QTextCharFormat();
         private readonly QTextCharFormat callerFormat = new QTextCharFormat();
         private readonly QTextCharFormat attributeFormat = new QTextCharFormat();
@@ -25,6 +22,7 @@ namespace ParatextQtPOC
         private readonly ScrStylesheet styleSheet;
         private readonly Dictionary<string, Annotation> createdAnnotations;
         private readonly IList<AnnotationSource> annotationSources;
+        private readonly StyleSheetHelper styleHelper;
 
         private QTextCharFormat currentParaCharFormat;
         private QTextCharFormat currentCharFormat;
@@ -45,38 +43,18 @@ namespace ParatextQtPOC
             this.createdAnnotations = createdAnnotations;
 
             styleSheet = scrText.ScrStylesheet(bookNum);
-
-            defaultFont = new QFont(scrText.Language.FontName, scrText.Language.FontSize);
+            styleHelper = StyleSheetHelper.Get(scrText, bookNum);
 
             markerFormat.Foreground = new QBrush(GlobalColor.DarkGray);
             markerFormat.Font = new QFont("Arial", 14);
             markerFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, 1);
 
             callerFormat.Foreground = new QBrush(GlobalColor.DarkBlue);
-            callerFormat.Font = new QFont(defaultFont.DefaultFamily, defaultFont.PointSize, (int)QFont.Weight.Bold);
+            callerFormat.Font = new QFont(styleHelper.DefaultFont.DefaultFamily, styleHelper.DefaultFont.PointSize, (int)QFont.Weight.Bold);
             callerFormat.verticalAlignment = QTextCharFormat.VerticalAlignment.AlignSuperScript;
 
             attributeFormat.Foreground = new QBrush(GlobalColor.DarkGray);
-            attributeFormat.Font = defaultFont;
-
-            foreach (ScrTag tag in styleSheet.Tags)
-            {
-                switch (tag.StyleType)
-                {
-                    case ScrStyleType.scNoteStyle:
-                    case ScrStyleType.scCharacterStyle:
-                        characterMarkerFormat.Add(tag.Marker, CreateCharacterStyleFromTag(tag));
-                        break;
-                    
-                    case ScrStyleType.scParagraphStyle:
-                    {
-                        QTextCharFormat charFormat = CreateCharacterStyleFromTag(tag);
-                        QTextBlockFormat paraFormat = CreateParagraphStyleFromTag(tag);
-                        paragraphMarkerFormat.Add(tag.Marker, new ParagraphStyleInfo(paraFormat, charFormat));
-                        break;
-                    }
-                }
-            }
+            attributeFormat.Font = styleHelper.DefaultFont;
 
             createdAnnotations.Clear();
         }
@@ -107,7 +85,8 @@ namespace ParatextQtPOC
 
         public override void StartPara(UsfmParserState state, string marker, bool unknown, NamedAttribute[] namedAttributes)
         {
-            if (paragraphMarkerFormat.TryGetValue(marker, out ParagraphStyleInfo styleInfo))
+            ParagraphStyleInfo styleInfo = styleHelper.GetParaStyle(marker);
+            if (styleInfo != null)
             {
                 currentParaCharFormat = styleInfo.CharFormat;
                 currentCharFormat = currentParaCharFormat;
@@ -266,107 +245,15 @@ namespace ParatextQtPOC
         #endregion
 
         #region Private helper methods
-        private QTextBlockFormat CreateParagraphStyleFromTag(ScrTag tag)
-        {
-            QTextBlockFormat paraFormat = new QTextBlockFormat();
-            paraFormat.SetProperty(TextEdit.PARAGRAPH_MARKER_PROPERTY, tag.Marker);
-
-            if (tag.RawJustificationType != null)
-            {
-                switch (tag.JustificationType)
-                {
-                    case ScrJustificationType.scCenter: paraFormat.Alignment = AlignmentFlag.AlignHCenter; break;
-                    case ScrJustificationType.scRight: paraFormat.Alignment = AlignmentFlag.AlignRight; break;
-                    case ScrJustificationType.scBoth:  paraFormat.Alignment = AlignmentFlag.AlignJustify; break;
-                    default: paraFormat.Alignment = AlignmentFlag.AlignLeft; break;
-                }
-            }
-
-            if (tag.RawFirstLineIndent != null)
-                paraFormat.TextIndent = tag.FirstLineIndent * 40 / 100.0; // 40 is the default indent
-
-            if (tag.RawLeftMargin != null)
-            {
-                double margin = tag.LeftMargin * 40 / 100.0; // 40 is the default indent
-                if (scrText.RightToLeft)
-                    paraFormat.RightMargin = margin;
-                else
-                    paraFormat.LeftMargin = margin;
-            }
-
-            if (tag.RawRightMargin != null)
-            {
-                double margin = tag.RightMargin * 40 / 100.0; // 40 is the default indent
-                if (scrText.RightToLeft)
-                    paraFormat.LeftMargin = margin;
-                else
-                    paraFormat.RightMargin = margin;
-            }
-
-            if (tag.RawLineSpacing != null)
-                paraFormat.SetLineHeight(tag.LineSpacing * 100, (int)QTextBlockFormat.LineHeightTypes.ProportionalHeight);
-
-            if (tag.RawSpaceBefore != null)
-                paraFormat.TopMargin = tag.SpaceBefore;
-
-            if (tag.RawSpaceAfter != null)
-                paraFormat.BottomMargin = tag.SpaceAfter;
-
-            return paraFormat;
-        }
-
-        private QTextCharFormat CreateCharacterStyleFromTag(ScrTag tag)
-        {
-            QTextCharFormat charFormat = new QTextCharFormat();
-            int pointSize = 0;
-            QFont.Weight? weight = null;
-            bool? italic = tag.RawItalic;
-            if (tag.RawBold != null)
-                weight = tag.Bold ? QFont.Weight.Bold : QFont.Weight.Normal;
-            if (tag.RawFontSize != null)
-                pointSize = tag.FontSize * defaultFont.PointSize / 12; // FontSize is treated as a percentage based on 12 being 100%
-            if (weight != null || italic != null || pointSize != 0)
-            {
-                charFormat.Font = new QFont(defaultFont.Family, pointSize != 0 ? pointSize : defaultFont.PointSize,
-                    weight != null ? (int)weight.Value : -1, italic ?? false);
-            }
-
-            if (tag.RawColor != null)
-                charFormat.Foreground = new QBrush(new QColor((uint)tag.Color.ARGB));
-
-            if (tag.RawSuperscript != null)
-                charFormat.verticalAlignment = tag.Superscript ? QTextCharFormat.VerticalAlignment.AlignSuperScript : QTextCharFormat.VerticalAlignment.AlignNormal;
-            else if (tag.RawSubscript != null)
-                charFormat.verticalAlignment = tag.Subscript ? QTextCharFormat.VerticalAlignment.AlignSubScript : QTextCharFormat.VerticalAlignment.AlignNormal;
-
-            if (tag.RawSmallCaps != null)
-                charFormat.FontCapitalization = tag.SmallCaps ? QFont.Capitalization.SmallCaps : QFont.Capitalization.MixedCase;
-            
-            return charFormat;
-        }
-
         private QTextCharFormat GetCharStyleForMarker(string markerWithoutPlus)
         {
-            if (!characterMarkerFormat.TryGetValue(markerWithoutPlus, out QTextCharFormat charFormat))
+            QTextCharFormat charFormat = styleHelper.GetCharStyle(markerWithoutPlus);
+            if (charFormat == null)
                 return currentParaCharFormat;
 
             QTextCharFormat returnFormat = new QTextCharFormat(currentParaCharFormat);
             returnFormat.Merge(charFormat);
             return returnFormat;
-        }
-        #endregion
-
-        #region ParagraphStyleInfo class
-        private sealed class ParagraphStyleInfo
-        {
-            public readonly QTextBlockFormat ParaFormat;
-            public readonly QTextCharFormat CharFormat;
-
-            public ParagraphStyleInfo(QTextBlockFormat paraFormat, QTextCharFormat charFormat)
-            {
-                ParaFormat = paraFormat;
-                CharFormat = charFormat;
-            }
         }
         #endregion
     }
