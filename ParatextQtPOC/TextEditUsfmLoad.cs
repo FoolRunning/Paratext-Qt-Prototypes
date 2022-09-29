@@ -47,7 +47,7 @@ namespace ParatextQtPOC
 
             markerFormat.Foreground = new QBrush(GlobalColor.DarkGray);
             markerFormat.Font = new QFont("Arial", 14);
-            markerFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, 1);
+            // markerFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, 1);
 
             callerFormat.Foreground = new QBrush(GlobalColor.DarkBlue);
             callerFormat.Font = new QFont(styleHelper.DefaultFont.DefaultFamily, styleHelper.DefaultFont.PointSize, (int)QFont.Weight.Bold);
@@ -203,7 +203,8 @@ namespace ParatextQtPOC
             // the same as in the text and does not handle overlapping annotations.
             int startOffset = state.VerseOffset;
             int endOffset = startOffset + text.Length;
-            
+
+            bool prevWasAnnotation = false;
             foreach (Annotation ann in currentVerseAnnotations
                 .Where(a => a.ScriptureSelection.StartPosition >= startOffset && a.ScriptureSelection.StartPosition < endOffset)
                 .OrderBy(a => a.ScriptureSelection.StartPosition))
@@ -212,9 +213,22 @@ namespace ParatextQtPOC
                 if (textIndex == -1)
                     continue;
 
-                string beforeText = text.Substring(0, textIndex);
-                cursor.InsertText(beforeText, currentCharFormat);
+                if (textIndex > 0)
+                {
+                    string beforeText = text.Substring(0, textIndex);
+                    cursor.InsertText(beforeText, currentCharFormat);
+                    prevWasAnnotation = false;
+                }
 
+                if (prevWasAnnotation)
+                {
+                    QTextCharFormat spaceFormat = new QTextCharFormat(currentCharFormat);
+                    spaceFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, true);
+                    spaceFormat.SetProperty(TextEdit.READONLY_TEXT_PROPERTY, true);
+                    cursor.InsertText(" ", spaceFormat);
+                }
+
+                prevWasAnnotation = true;
                 string annId = Guid.NewGuid().ToString();
                 QTextCharFormat mergedFormat = new QTextCharFormat(currentCharFormat);
                 if (ann.TreatSelectedTextAsLink)
@@ -226,11 +240,22 @@ namespace ParatextQtPOC
                     mergedFormat.ToolTip = ann.HoverText;
                 mergedFormat.Merge(ann.Style);
 
+                if (!string.IsNullOrEmpty(ann.InsertedText))
+                {
+                    QTextCharFormat insertedTextFormat = new QTextCharFormat(ann.InsertedTextStyle);
+                    insertedTextFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, true);
+                    insertedTextFormat.SetProperty(TextEdit.READONLY_TEXT_PROPERTY, true);
+                    insertedTextFormat.Anchor = true;
+                    insertedTextFormat.AnchorHref = "annotation:" + annId;
+                    cursor.InsertText(ann.InsertedText, insertedTextFormat);
+                }
+
                 // Ideally we would use QTextImageFormat to insert the image directly, but
                 // that seems to require the image be part of the embedded resources - which
                 // we couldn't figure out how to add an image to some embedded resources
                 // that Qt could access (it may not be possible in QtSharp).
-                cursor.InsertHtml($"<a href='annotationIcon:{annId}'><img src='{ann.IconPath}'/></a>");
+                var imageStyle = string.IsNullOrEmpty(ann.IconStyle) ? "" : $" style='{ann.IconStyle}'";
+                cursor.InsertHtml($"<a href='annotationIcon:{annId}'><img src='{ann.IconPath}'{imageStyle}/></a>");
                 
                 string annotatedText = text.Substring(textIndex, ann.ScriptureSelection.SelectedText.Length);
                 cursor.InsertText(annotatedText, mergedFormat);

@@ -45,6 +45,8 @@ namespace ParatextQtPOC
                 yield return new NotesAnnotation(thread, tags);
         }
 
+        public event EventHandler<AnnotationsChangedEventArgs> AnnotationsChanged;
+
         #region NotesAnnotation class
         private sealed class NotesAnnotation : Annotation
         {
@@ -75,6 +77,8 @@ namespace ParatextQtPOC
 
             public string IconPath { get; }
 
+            public string IconStyle => null;
+
             public string HoverText { get; }
             
             
@@ -86,6 +90,10 @@ namespace ParatextQtPOC
                 QMessageBox.Information(null, "Note clicked", HoverText, QMessageBox.StandardButton.Close);
                 return true;
             }
+
+            public string InsertedText => null;
+
+            public QTextCharFormat InsertedTextStyle => null;
         }
         #endregion
     }

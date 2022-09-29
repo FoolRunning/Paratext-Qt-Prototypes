@@ -16,6 +16,18 @@ namespace ParatextQtPOC
         /// <param name="verseRef">verse reference to find annotations for</param>
         /// <returns>all annotations for the verse. Or null if AnnotationSource Implementation requires usfm.</returns>
         IEnumerable<Annotation> GetAnnotations(VerseRef verseRef);
+
+        event EventHandler<AnnotationsChangedEventArgs> AnnotationsChanged;
+    }
+
+    public class AnnotationsChangedEventArgs : EventArgs
+    {
+        public readonly ScrText ScrText;
+
+        public AnnotationsChangedEventArgs(ScrText scrText)
+        {
+            ScrText = scrText;
+        }
     }
 
     public interface Annotation
@@ -43,6 +55,8 @@ namespace ParatextQtPOC
         QImage Icon { get; }
 
         string IconPath { get; }
+
+        string IconStyle { get; }
         
         /// <summary>
         /// Called when a click is performed on an annotation
@@ -55,5 +69,9 @@ namespace ParatextQtPOC
         bool Click(int button, bool onIcon, object control, Coordinates point);
 		
         string HoverText { get; }
+
+        string InsertedText { get; }
+
+        QTextCharFormat InsertedTextStyle { get; }
     }
 }

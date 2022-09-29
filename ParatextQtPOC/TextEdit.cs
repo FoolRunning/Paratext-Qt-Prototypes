@@ -22,6 +22,7 @@ namespace ParatextQtPOC
         public const int VERSE_ID_PROPERTY = 0x1000F2;
         public const int PARAGRAPH_MARKER_PROPERTY = 0x1000F3;
         public const int IGNORE_FRAGMENT_PROPERTY = 0x1000F4;
+        public const int READONLY_TEXT_PROPERTY = 0x1000F5;
         public const int SPECIAL_VERSE = 1;
         public const int SPECIAL_FOOTNOTE_CALLER = 2;
         //public const int SPECIAL_ANNOTATION_ICON = 30;
@@ -31,7 +32,9 @@ namespace ParatextQtPOC
         private readonly QComboBox projectSelector;
         private readonly QLabel referenceLabel;
         private readonly Dictionary<string, Annotation> annotationsInView = new Dictionary<string, Annotation>();
+        private readonly List<AnnotationSource> annotationSources = new List<AnnotationSource>();
         private ScrText scrText;
+        private int currentBook;
 
         public TextEdit()
         {
@@ -77,9 +80,21 @@ namespace ParatextQtPOC
             textEdit.Enabled = false;
             textEdit.AnchorClicked += TextEdit_AnchorClicked;
             textEdit.CursorPositionChanged += TextEdit_CursorPositionChanged;
+            textEdit.KeyPressEvent += TextEdit_KeyPressEvent;
+            textEdit.KeyReleaseEvent += TextEdit_KeyReleaseEvent;
 
             CentralWidget = textEdit;
             Resize(1024, 768);
+        }
+
+        private void TextEdit_KeyReleaseEvent(object arg1, QKeyEvent arg2)
+        {
+            arg2.Handled = textEdit.CurrentCharFormat.HasProperty(READONLY_TEXT_PROPERTY);
+        }
+
+        private void TextEdit_KeyPressEvent(object arg1, QKeyEvent arg2)
+        {
+            arg2.Handled = textEdit.CurrentCharFormat.HasProperty(READONLY_TEXT_PROPERTY);
         }
 
         private void TextEdit_CursorPositionChanged()
@@ -106,7 +121,19 @@ namespace ParatextQtPOC
             if (textEdit == null || index == 0)
                 return; // Still initializing window
 
+            foreach (var annotationSource in annotationSources)
+                annotationSource.AnnotationsChanged -= AnnotationSource_AnnotationsChanged;
+
+            annotationSources.Clear();
+
             scrText = ScrTextCollection.GetById(HexId.FromStr(projectSelector.ItemData(index).ToString()));
+
+            annotationSources.Add(new NotesAnnotationSource(scrText));
+            annotationSources.Add(new TranslationPromptsAnnotationSource(scrText));
+
+            foreach (var annotationSource in annotationSources)
+                annotationSource.AnnotationsChanged += AnnotationSource_AnnotationsChanged;
+
             WindowTitle = $"ParaNext™️ ({scrText.Name})";
 
             bookSelector.Clear();
@@ -146,7 +173,7 @@ namespace ParatextQtPOC
                                     break;
                             }
                         }
-                        else if (/*!fragment.CharFormat.HasProperty(IGNORE_FRAGMENT_PROPERTY) &&*/ (fragment.Text.Length > 1 || !fragment.Text.StartsWith(StringUtils.orcCharacter)))
+                        else if (!fragment.CharFormat.HasProperty(IGNORE_FRAGMENT_PROPERTY) && (fragment.Text.Length > 1 || !fragment.Text.StartsWith(StringUtils.orcCharacter)))
                             writer.Write(fragment.Text);
                     }
                     
@@ -185,8 +212,7 @@ namespace ParatextQtPOC
 
         public void LoadUsfm(int bookNum)
         {
-            AnnotationSource[] annotationSources = { new NotesAnnotationSource(scrText) };
-            
+            currentBook = bookNum;
             Stopwatch sw = Stopwatch.StartNew();
             QTextDocument doc = textEdit.Document;
             QTextCursor cursor = new QTextCursor(doc);
@@ -203,6 +229,11 @@ namespace ParatextQtPOC
 
             sw.Stop();
             Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} took {sw.ElapsedMilliseconds}ms");
+        }
+
+        private void AnnotationSource_AnnotationsChanged(object sender, AnnotationsChangedEventArgs e)
+        {
+            LoadUsfm(currentBook);
         }
     }
 }
