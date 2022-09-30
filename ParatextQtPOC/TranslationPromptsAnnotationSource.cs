@@ -47,6 +47,9 @@ namespace ParatextQtPOC
 
         private void CreateTestData()
         {
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 1), "Start letter", false));
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 1), "3 things", false));
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 2), "Prayer/request", false));
             translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 1), "Start letter", false));
             translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 1), "3 things", false));
             translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 2), "Prayer/request", false));

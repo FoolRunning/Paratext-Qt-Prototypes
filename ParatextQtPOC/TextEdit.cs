@@ -27,7 +27,7 @@ namespace ParatextQtPOC
         public const int SPECIAL_FOOTNOTE_CALLER = 2;
         //public const int SPECIAL_ANNOTATION_ICON = 30;
 
-        private readonly QTextBrowser textEdit;
+        private readonly QTextBrowser textBrowser;
         private readonly QComboBox bookSelector;
         private readonly QComboBox projectSelector;
         private readonly QLabel referenceLabel;
@@ -71,35 +71,23 @@ namespace ParatextQtPOC
 
             AddToolBar(toolbar);
 
-            textEdit = new QTextBrowser(this);
-            textEdit.UndoRedoEnabled = true;
-            textEdit.ReadOnly = false;
-            textEdit.OpenLinks = false;
-            textEdit.OpenExternalLinks = false;
-            textEdit.TextInteractionFlags |= TextInteractionFlag.LinksAccessibleByMouse;
-            textEdit.Enabled = false;
-            textEdit.AnchorClicked += TextEdit_AnchorClicked;
-            textEdit.CursorPositionChanged += TextEdit_CursorPositionChanged;
-            textEdit.KeyPressEvent += TextEdit_KeyPressEvent;
-            textEdit.KeyReleaseEvent += TextEdit_KeyReleaseEvent;
+            textBrowser = new PTXTextBrowser(this);
+            textBrowser.UndoRedoEnabled = true;
+            textBrowser.ReadOnly = false;
+            textBrowser.OpenLinks = false;
+            textBrowser.OpenExternalLinks = false;
+            textBrowser.TextInteractionFlags |= TextInteractionFlag.LinksAccessibleByMouse;
+            textBrowser.Enabled = false;
+            textBrowser.AnchorClicked += TextBrowserAnchorClicked;
+            textBrowser.CursorPositionChanged += TextBrowserCursorPositionChanged;
 
-            CentralWidget = textEdit;
+            CentralWidget = textBrowser;
             Resize(1024, 768);
         }
 
-        private void TextEdit_KeyReleaseEvent(object arg1, QKeyEvent arg2)
+        private void TextBrowserCursorPositionChanged()
         {
-            arg2.Handled = textEdit.CurrentCharFormat.HasProperty(READONLY_TEXT_PROPERTY);
-        }
-
-        private void TextEdit_KeyPressEvent(object arg1, QKeyEvent arg2)
-        {
-            arg2.Handled = textEdit.CurrentCharFormat.HasProperty(READONLY_TEXT_PROPERTY);
-        }
-
-        private void TextEdit_CursorPositionChanged()
-        {
-            QTextCursor cursor = textEdit.TextCursor;
+            QTextCursor cursor = textBrowser.TextCursor;
             string lastReference = null;
             QTextBlock block = cursor.Block;
             QTextBlock.Iterator iterator;
@@ -118,7 +106,7 @@ namespace ParatextQtPOC
 
         private void ProjectSelector_CurrentIndexChanged(int index)
         {
-            if (textEdit == null || index == 0)
+            if (textBrowser == null || index == 0)
                 return; // Still initializing window
 
             foreach (var annotationSource in annotationSources)
@@ -142,16 +130,16 @@ namespace ParatextQtPOC
                 bookSelector.AddItem(Canon.BookNumberToEnglishName(bookNum), bookNum);
             bookSelector.CurrentIndex = 0;
             bookSelector.Enabled = scrText.Settings.BooksPresentSet.Count > 0;
-            textEdit.LayoutDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
-            textEdit.Alignment = scrText.RightToLeft ? AlignmentFlag.AlignRight | AlignmentFlag.AlignAbsolute : AlignmentFlag.AlignLeft;
+            textBrowser.LayoutDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
+            textBrowser.Alignment = scrText.RightToLeft ? AlignmentFlag.AlignRight | AlignmentFlag.AlignAbsolute : AlignmentFlag.AlignLeft;
         }
 
         private void SaveButton_Clicked(bool isChecked)
         {
             using (TextWriter writer = new StreamWriter("./Temp.sfm"))
             {
-                QTextBlock block = textEdit.Document.Begin();
-                while (block != textEdit.Document.End())
+                QTextBlock block = textBrowser.Document.Begin();
+                while (block != textBrowser.Document.End())
                 {
                     //string marker = block.BlockFormat.property(PARAGRAPH_MARKER_PROPERTY).ToString();
                     //writer.Write($"\\{marker} ");
@@ -184,7 +172,7 @@ namespace ParatextQtPOC
             }
         }
 
-        private void TextEdit_AnchorClicked(QUrl linkUrl)
+        private void TextBrowserAnchorClicked(QUrl linkUrl)
         {
             string[] parts = linkUrl.ToString().ToLowerInvariant().Split(':');
             if (parts[0] == "annotation" || parts[0] == "annotationicon")
@@ -197,12 +185,12 @@ namespace ParatextQtPOC
 
         private void BookSelector_CurrentIndexChanged(int index)
         {
-            if (textEdit == null)
+            if (textBrowser == null)
                 return; // Still initializing window
 
-            textEdit.Document.Clear();
-            textEdit.Document.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
-            textEdit.Enabled = index > 0;
+            textBrowser.Document.Clear();
+            textBrowser.Document.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
+            textBrowser.Enabled = index > 0;
             if (index > 0)
             {
                 int bookNum = bookSelector.ItemData(index).ToInt();
@@ -214,7 +202,7 @@ namespace ParatextQtPOC
         {
             currentBook = bookNum;
             Stopwatch sw = Stopwatch.StartNew();
-            QTextDocument doc = textEdit.Document;
+            QTextDocument doc = textBrowser.Document;
             QTextCursor cursor = new QTextCursor(doc);
             Debug.Assert(cursor.AtStart);
 
