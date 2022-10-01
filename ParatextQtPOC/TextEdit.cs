@@ -137,38 +137,41 @@ namespace ParatextQtPOC
         private void SaveButton_Clicked(bool isChecked)
         {
             using (TextWriter writer = new StreamWriter("./Temp.sfm"))
+                WriteUsfm(writer);
+        }
+
+        private void WriteUsfm(TextWriter writer)
+        {
+            QTextBlock block = textBrowser.Document.Begin();
+            while (block != textBrowser.Document.End())
             {
-                QTextBlock block = textBrowser.Document.Begin();
-                while (block != textBrowser.Document.End())
+                //string marker = block.BlockFormat.property(PARAGRAPH_MARKER_PROPERTY).ToString();
+                //writer.Write($"\\{marker} ");
+
+                QTextBlock.Iterator iterator;
+                for (iterator = block.Begin(); !iterator.AtEnd; iterator++)
                 {
-                    //string marker = block.BlockFormat.property(PARAGRAPH_MARKER_PROPERTY).ToString();
-                    //writer.Write($"\\{marker} ");
-
-                    QTextBlock.Iterator iterator;
-                    for (iterator = block.Begin(); !iterator.AtEnd; iterator++)
+                    QTextFragment fragment = iterator.Fragment;
+                    if (fragment.CharFormat.HasProperty(SPECIAL_PROPERTY))
                     {
-                        QTextFragment fragment = iterator.Fragment;
-                        if (fragment.CharFormat.HasProperty(SPECIAL_PROPERTY))
+                        switch (fragment.CharFormat.property(SPECIAL_PROPERTY).ToInt())
                         {
-                            switch (fragment.CharFormat.property(SPECIAL_PROPERTY).ToInt())
-                            {
-                                case SPECIAL_VERSE: 
-                                    writer.WriteLine();
-                                    writer.Write(fragment.Text);
-                                    break;
-                                case SPECIAL_FOOTNOTE_CALLER:
-                                    writer.Write(fragment.CharFormat.ToolTip);
-                                    break;
-                            }
+                            case SPECIAL_VERSE:
+                                writer.WriteLine();
+                                writer.Write(fragment.Text);
+                                break;
+                            case SPECIAL_FOOTNOTE_CALLER:
+                                writer.Write(fragment.CharFormat.ToolTip);
+                                break;
                         }
-                        else if (!fragment.CharFormat.HasProperty(IGNORE_FRAGMENT_PROPERTY) && (fragment.Text.Length > 1 || !fragment.Text.StartsWith(StringUtils.orcCharacter)))
-                            writer.Write(fragment.Text);
                     }
-                    
-                    writer.WriteLine();
-
-                    block = block.Next;
+                    else if (!fragment.CharFormat.HasProperty(IGNORE_FRAGMENT_PROPERTY) && (fragment.Text.Length > 1 || !fragment.Text.StartsWith(StringUtils.orcCharacter)))
+                        writer.Write(fragment.Text);
                 }
+
+                writer.WriteLine();
+
+                block = block.Next;
             }
         }
 
@@ -207,21 +210,92 @@ namespace ParatextQtPOC
             Debug.Assert(cursor.AtStart);
 
             List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
+            FormatText(bookNum, tokens, cursor);
+            sw.Stop();
+            Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} took {sw.ElapsedMilliseconds}ms");
+        }
+
+        private void FormatText(int bookNum, List<UsfmToken> tokens, QTextCursor cursor)
+        {
             UsfmParser parser = new UsfmParser(scrText.ScrStylesheet(bookNum), tokens,
-                new VerseRef(bookNum, 1, 0, scrText.Settings.Versification), 
+                new VerseRef(bookNum, 1, 0, scrText.Settings.Versification),
                 new TextEditUsfmLoad(scrText, bookNum, cursor, annotationSources, annotationsInView));
 
             cursor.BeginEditBlock();
             parser.ProcessTokens();
             cursor.EndEditBlock();
-
-            sw.Stop();
-            Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} took {sw.ElapsedMilliseconds}ms");
         }
 
         private void AnnotationSource_AnnotationsChanged(object sender, AnnotationsChangedEventArgs e)
         {
-            LoadUsfm(currentBook);
+            Stopwatch sw = Stopwatch.StartNew();
+            TextWriter writer = new StringWriter();
+            WriteUsfm(writer);
+            string currentUsfm = writer.ToString();
+            List<UsfmToken> tokens = UsfmToken.Tokenize(scrText, currentBook, currentUsfm);
+            QTextDocument newDoc = new QTextDocument();
+            QTextCursor cursor = new QTextCursor(newDoc);
+            FormatText(currentBook, tokens, cursor);
+            QTextDocument curDoc = textBrowser.Document;
+            if (newDoc.BlockCount != curDoc.BlockCount)
+            {
+                textBrowser.Document = newDoc;
+                return;
+            }
+
+            for (int blockNbr = 0; blockNbr < newDoc.BlockCount; blockNbr++)
+            {
+                QTextBlock curBlock = curDoc.FindBlockByNumber(blockNbr);
+                QTextBlock newBlock = newDoc.FindBlockByNumber(blockNbr);
+                if (BlocksAreDifferent(curBlock, newBlock))
+                    CopyBlock(curBlock, newBlock);
+
+            }
+            sw.Stop();
+            Debug.WriteLine($"Refreshing {Canon.BookNumberToId(currentBook)} took {sw.ElapsedMilliseconds}ms");
+        }
+
+        private bool BlocksAreDifferent(QTextBlock curBlock, QTextBlock newBlock)
+        {
+            if (curBlock.Length != newBlock.Length ||
+                !curBlock.BlockFormat.Equals(newBlock.BlockFormat) ||
+                !curBlock.CharFormat.Equals(newBlock.CharFormat))
+                return true;
+
+            QTextBlock.Iterator curIter;
+            QTextBlock.Iterator newIter;
+            for (curIter = curBlock.Begin(), newIter = newBlock.Begin(); !curIter.AtEnd && !newIter.AtEnd; curIter++, newIter++)
+            {
+                QTextFragment curFragment = curIter.Fragment;
+                QTextFragment newFragment = newIter.Fragment;
+
+                if (curFragment.Position != newFragment.Position ||
+                    curFragment.Length != newFragment.Length ||
+                    curFragment.Text != newFragment.Text ||
+                    !curFragment.CharFormat.Equals(newFragment.CharFormat))
+                {
+                    return true;
+                }
+            }
+
+            return !curIter.AtEnd || !newIter.AtEnd;
+        }
+
+        private void CopyBlock(QTextBlock curBlock, QTextBlock newBlock)
+        {
+            curBlock.BlockFormat.Swap(newBlock.BlockFormat);
+            curBlock.CharFormat.Swap(newBlock.CharFormat);
+            QTextCursor deleteCursor = new QTextCursor(curBlock);
+            deleteCursor.MovePosition(QTextCursor.MoveOperation.EndOfBlock, QTextCursor.MoveMode.KeepAnchor);
+            deleteCursor.RemoveSelectedText();
+
+            QTextCursor insertCursor = new QTextCursor(curBlock);
+            insertCursor.BeginEditBlock();
+            for (var newIter = newBlock.Begin(); !newIter.AtEnd; newIter++)
+            {
+                insertCursor.InsertText(newIter.Fragment.Text, newIter.Fragment.CharFormat);
+            }
+            insertCursor.EndEditBlock();
         }
     }
 }
