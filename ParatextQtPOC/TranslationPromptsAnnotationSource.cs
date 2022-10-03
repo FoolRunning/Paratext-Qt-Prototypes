@@ -28,7 +28,6 @@ namespace ParatextQtPOC
         /// <summary>
         /// Gets all annotations for the specified reference and text name.
         /// </summary>
-        /// <param name="scrText">project</param>
         /// <param name="verseRef">verse reference to find annotations for</param>
         /// <returns>all annotations for the verse. Or null if AnnotationSource Implementation requires usfm.</returns>
         public IEnumerable<Annotation> GetAnnotations(VerseRef verseRef)
@@ -41,18 +40,18 @@ namespace ParatextQtPOC
         private void TogglePrompt(TranslationPromptAnnotation annotation)
         {
             annotation.IsChecked = !annotation.IsChecked;
-
-            AnnotationsChanged?.Invoke(this, new AnnotationsChangedEventArgs(scrText));
+            
+            AnnotationsChanged?.Invoke(this, new AnnotationsChangedEventArgs(scrText, annotation.ScriptureSelection.VerseRef, false));
         }
 
         private void CreateTestData()
         {
-            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 1), "Start letter", false));
-            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 1), "3 things", false));
-            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 2), "Prayer/request", false));
-            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 1), "Start letter", false));
-            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 1), "3 things", false));
-            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 2), "Prayer/request", false));
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 1, scrText.Settings.Versification), "Start letter", false));
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 1, scrText.Settings.Versification), "3 things", false));
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("PSA"), 1, 2, scrText.Settings.Versification), "Prayer/request", false));
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 1, scrText.Settings.Versification), "Start letter", false));
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 1, scrText.Settings.Versification), "3 things", false));
+            translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 2, scrText.Settings.Versification), "Prayer/request", false));
         }
 
         #region NotesAnnotation class

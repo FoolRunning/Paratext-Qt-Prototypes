@@ -23,10 +23,14 @@ namespace ParatextQtPOC
     public class AnnotationsChangedEventArgs : EventArgs
     {
         public readonly ScrText ScrText;
+        public readonly VerseRef VerseRef;
+        public readonly bool RefreshAllAnnotations;
 
-        public AnnotationsChangedEventArgs(ScrText scrText)
+        public AnnotationsChangedEventArgs(ScrText scrText, VerseRef verseRef, bool refreshAllAnnotations)
         {
             ScrText = scrText;
+            VerseRef = verseRef;
+            RefreshAllAnnotations = refreshAllAnnotations;
         }
     }
 

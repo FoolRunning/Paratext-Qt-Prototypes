@@ -32,7 +32,6 @@ namespace ParatextQtPOC
         /// <summary>
         /// Gets all annotations for the specified reference and text name.
         /// </summary>
-        /// <param name="scrText">project</param>
         /// <param name="verseRef">verse reference to find annotations for</param>
         /// <returns>all annotations for the verse. Or null if AnnotationSource Implementation requires usfm.</returns>
         public IEnumerable<Annotation> GetAnnotations(VerseRef verseRef)

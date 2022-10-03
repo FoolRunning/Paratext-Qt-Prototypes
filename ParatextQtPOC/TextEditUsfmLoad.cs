@@ -55,8 +55,6 @@ namespace ParatextQtPOC
 
             attributeFormat.Foreground = new QBrush(GlobalColor.DarkGray);
             attributeFormat.Font = styleHelper.DefaultFont;
-
-            createdAnnotations.Clear();
         }
         #endregion
 
