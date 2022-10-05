@@ -52,12 +52,7 @@ namespace ParatextQtPOC
         QTextCharFormat Style { get; }
 
         bool TreatSelectedTextAsLink { get; }
-
-        /// <summary>
-        /// Null for none.
-        /// </summary>
-        QImage Icon { get; }
-
+        
         string IconPath { get; }
 
         string IconStyle { get; }

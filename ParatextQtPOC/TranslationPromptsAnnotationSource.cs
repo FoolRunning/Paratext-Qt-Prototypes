@@ -53,8 +53,8 @@ namespace ParatextQtPOC
             translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 1, scrText.Settings.Versification), "3 things", false));
             translationPromptAnnotations.Add(new TranslationPromptAnnotation(this, new VerseRef(Canon.BookIdToNumber("JUD"), 1, 2, scrText.Settings.Versification), "Prayer/request", false));
         }
-
-        #region NotesAnnotation class
+        
+        #region TranslationPromptAnnotation class
         private sealed class TranslationPromptAnnotation : Annotation
         {
             private static readonly QTextCharFormat insertedTextStyle;
@@ -75,7 +75,6 @@ namespace ParatextQtPOC
                 this.owner = owner;
                 this.insertedText = insertedText;
                 IsChecked = isChecked;
-                Icon = new QImage(IconPath);
                 ScriptureSelection = new ScriptureSelection(verse, null, verse.Verse.Length + 4);
             }
 
@@ -85,14 +84,11 @@ namespace ParatextQtPOC
 
             public bool TreatSelectedTextAsLink => false;
 
-            public QImage Icon { get; }
-
-            public string IconPath { get; internal set; }
+            public string IconPath { get; private set; }
 
             public string IconStyle => "background-color:LightBlue";
 
-            public string HoverText { get; }
-
+            public string HoverText => "Click me!";
 
             public bool Click(int button, bool onIcon, object control, Coordinates point)
             {

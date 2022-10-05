@@ -77,7 +77,7 @@ namespace ParatextQtPOC
         private QTextBlockFormat CreateParagraphStyleFromTag(ScrTag tag)
         {
             QTextBlockFormat paraFormat = new QTextBlockFormat();
-            paraFormat.SetProperty(TextEdit.PARAGRAPH_MARKER_PROPERTY, tag.Marker);
+            paraFormat.SetProperty(TextEditUsfmLoad.PARAGRAPH_MARKER_PROPERTY, tag.Marker);
 
             if (tag.RawJustificationType != null)
             {

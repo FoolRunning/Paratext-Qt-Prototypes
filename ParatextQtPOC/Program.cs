@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Text;
 using Paratext.Data;
+using QtGui;
 using QtWidgets;
 
 namespace ParatextQtPOC
@@ -13,6 +14,9 @@ namespace ParatextQtPOC
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
             ParatextData.Initialize();
+            
+            QApplication.Style = new ParatextQtStyle();
+            QGuiApplication.Palette = QApplication.Style.StandardPalette;
 
             int count = 0;
             unsafe
@@ -20,10 +24,7 @@ namespace ParatextQtPOC
                 QApplication qtApp = new QApplication(ref count, null);
             }
 
-            //MainWindow mainWindow = new MainWindow();
-            //mainWindow.Show();
-
-            TextEdit textEdit = new TextEdit();
+            MainWindow textEdit = new MainWindow();
             textEdit.Show();
 
             QApplication.Exec();

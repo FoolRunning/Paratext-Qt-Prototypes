@@ -11,6 +11,15 @@ namespace ParatextQtPOC
 {
     public sealed class TextEditUsfmLoad : UsfmParserSink
     {
+        public const int SPECIAL_PROPERTY = 0x1000F1;
+        public const int VERSE_ID_PROPERTY = 0x1000F2;
+        public const int PARAGRAPH_MARKER_PROPERTY = 0x1000F3;
+        public const int IGNORE_FRAGMENT_PROPERTY = 0x1000F4;
+        public const int READONLY_TEXT_PROPERTY = 0x1000F5;
+        public const int SPECIAL_VERSE = 1;
+        public const int SPECIAL_FOOTNOTE_CALLER = 2;
+        //public const int SPECIAL_ANNOTATION_ICON = 30;
+
         #region Member variables
         private readonly ScrText scrText;
         private readonly List<Annotation> currentVerseAnnotations = new List<Annotation>();
@@ -98,7 +107,7 @@ namespace ParatextQtPOC
             }
 
             QTextCharFormat verseId = new QTextCharFormat(markerFormat);
-            verseId.SetProperty(TextEdit.VERSE_ID_PROPERTY, state.VerseRef.ToString());
+            verseId.SetProperty(VERSE_ID_PROPERTY, state.VerseRef.ToString());
 
             string beginning = scrText.RightToLeft ? StringUtils.rtlMarker.ToString() : "";
             cursor.InsertText($"{beginning}\\{marker} ", verseId);
@@ -120,8 +129,8 @@ namespace ParatextQtPOC
 
             if (markerWithoutPlus == "v")
             {
-                mergedFormat.SetProperty(TextEdit.SPECIAL_PROPERTY, TextEdit.SPECIAL_VERSE);
-                mergedFormat.SetProperty(TextEdit.VERSE_ID_PROPERTY, state.VerseRef.ToString());
+                mergedFormat.SetProperty(SPECIAL_PROPERTY, SPECIAL_VERSE);
+                mergedFormat.SetProperty(VERSE_ID_PROPERTY, state.VerseRef.ToString());
             }
 
             cursor.InsertText($"\\{markerWithoutPlus} ", mergedFormat);
@@ -167,7 +176,7 @@ namespace ParatextQtPOC
             inNote = false;
             
             QTextCharFormat noteFormat = new QTextCharFormat(callerFormat);
-            noteFormat.SetProperty(TextEdit.SPECIAL_PROPERTY, TextEdit.SPECIAL_FOOTNOTE_CALLER);
+            noteFormat.SetProperty(SPECIAL_PROPERTY, SPECIAL_FOOTNOTE_CALLER);
             if (noteIsClosed)
                 noteBuilder.Append($"\\{marker}*");
             noteFormat.ToolTip = noteBuilder.ToString();
@@ -221,8 +230,8 @@ namespace ParatextQtPOC
                 if (prevWasAnnotation)
                 {
                     QTextCharFormat spaceFormat = new QTextCharFormat(currentCharFormat);
-                    spaceFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, true);
-                    spaceFormat.SetProperty(TextEdit.READONLY_TEXT_PROPERTY, true);
+                    spaceFormat.SetProperty(IGNORE_FRAGMENT_PROPERTY, true);
+                    spaceFormat.SetProperty(READONLY_TEXT_PROPERTY, true);
                     cursor.InsertText(" ", spaceFormat);
                 }
 
@@ -241,8 +250,8 @@ namespace ParatextQtPOC
                 if (!string.IsNullOrEmpty(ann.InsertedText))
                 {
                     QTextCharFormat insertedTextFormat = new QTextCharFormat(ann.InsertedTextStyle);
-                    insertedTextFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, true);
-                    insertedTextFormat.SetProperty(TextEdit.READONLY_TEXT_PROPERTY, true);
+                    insertedTextFormat.SetProperty(IGNORE_FRAGMENT_PROPERTY, true);
+                    insertedTextFormat.SetProperty(READONLY_TEXT_PROPERTY, true);
                     insertedTextFormat.Anchor = true;
                     insertedTextFormat.AnchorHref = "annotation:" + annId;
                     cursor.InsertText(ann.InsertedText, insertedTextFormat);

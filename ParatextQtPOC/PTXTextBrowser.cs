@@ -22,7 +22,7 @@ namespace ParatextQtPOC
 
         protected override unsafe void OnKeyPressEvent(QKeyEvent @event)
         {
-            if (CurrentCharFormat.HasProperty(TextEdit.READONLY_TEXT_PROPERTY) &&
+            if (CurrentCharFormat.HasProperty(TextEditUsfmLoad.READONLY_TEXT_PROPERTY) &&
                 !Enum.IsDefined(typeof(safeKeys), @event.Key) )
                 return;
             base.OnKeyPressEvent(@event);
