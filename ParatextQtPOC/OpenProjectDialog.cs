@@ -14,7 +14,7 @@ namespace ParatextQtPOC
         private readonly QPushButton okButton;
         private readonly List<ScrText> scrTexts;
 
-        public OpenProjectDialog()
+        public OpenProjectDialog(QWidget parent) : base(parent)
         {
             WindowModality = WindowModality.WindowModal;
 

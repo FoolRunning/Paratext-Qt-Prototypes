@@ -181,7 +181,7 @@ namespace ParatextQtPOC
 
         private void Menu_Open(bool isChecked)
         {
-            OpenProjectDialog dialog = new OpenProjectDialog();
+            OpenProjectDialog dialog = new OpenProjectDialog(this);
             dialog.Exec();
 
             if (dialog.SelectedProjects != null)
