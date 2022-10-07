@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using Paratext.Data;
 using QtCore;
@@ -21,6 +22,7 @@ namespace ParatextQtPOC
         private readonly QComboBox projectSelector;
         //private readonly QLabel referenceLabel;
         private TextForm currentWindow;
+        private bool referenceChanging;
         #endregion
 
         #region Constructor
@@ -142,6 +144,25 @@ namespace ParatextQtPOC
 
             visibleWindows.Remove(window);
         }
+
+        private void Window_ReferenceChanged(object obj, ReferenceChangedArgs args)
+        {
+            if (referenceChanging)
+                return;
+
+            try
+            {
+                referenceChanging = true;
+                TextForm window = (TextForm)(obj);
+                foreach (var win in visibleWindows)
+                    if (win != window)
+                        win.CurrentReference = args.NewVerseRef;
+            }
+            finally
+            {
+                referenceChanging = false;
+            }
+        }
         
         private void BookSelector_CurrentIndexChanged(int index)
         {
@@ -150,6 +171,7 @@ namespace ParatextQtPOC
 
             int bookNum = bookSelector.ItemData(index).ToInt();
             currentWindow.LoadBook(bookNum);
+            currentWindow.SetFocus(QtCore.Qt.FocusReason.OtherFocusReason);
         }
 
         private void SaveButton_Clicked(bool isChecked)
@@ -162,20 +184,31 @@ namespace ParatextQtPOC
             OpenProjectDialog dialog = new OpenProjectDialog();
             dialog.Exec();
 
-            if (dialog.SelectedProject != null)
+            if (dialog.SelectedProjects != null)
             {
-                TextForm newWindow = new TextForm(dialog.SelectedProject, this);
-                newWindow.AllowedAreas = CentralWidget == null ? QtCore.Qt.DockWidgetArea.NoDockWidgetArea : QtCore.Qt.DockWidgetArea.AllDockWidgetAreas;
-                newWindow.FocusInEvent += (s, e) => CurrentWindow = (TextForm)s;
-                newWindow.CloseEvent += Window_CloseEvent;
-                visibleWindows.Add(newWindow);
+                foreach (var project in dialog.SelectedProjects)
+                {
+                    Stopwatch sw = Stopwatch.StartNew();
+                    TextForm newWindow = new TextForm(project, this);
+                    sw.Stop();
+                    Debug.WriteLine($"Creating TextForm for {project.Name} took {sw.ElapsedMilliseconds}ms");
 
-                if (CentralWidget == null)
-                    CentralWidget = newWindow;
-                else
-                    AddDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, newWindow);
+                    sw.Restart();
+                    newWindow.AllowedAreas = CentralWidget == null ? QtCore.Qt.DockWidgetArea.NoDockWidgetArea : QtCore.Qt.DockWidgetArea.AllDockWidgetAreas;
+                    newWindow.FocusInEvent += (s, e) => CurrentWindow = (TextForm)s;
+                    newWindow.CloseEvent += Window_CloseEvent;
+                    newWindow.ReferenceChanged += Window_ReferenceChanged;
+                    visibleWindows.Add(newWindow);
 
-                CurrentWindow = newWindow;
+                    if (CentralWidget == null)
+                        CentralWidget = newWindow;
+                    else
+                        AddDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, newWindow);
+
+                    sw.Stop();
+                    Debug.WriteLine($"Adding project {project.Name} to window took {sw.ElapsedMilliseconds}ms");
+                    CurrentWindow = newWindow;
+                }
             }
         }
         

@@ -27,7 +27,7 @@ namespace ParatextQtPOC
             projectList = new QTableWidget(scrTexts.Count, 3, this);
             projectList.ItemSelectionChanged += ProjectList_ItemSelectionChanged;
             projectList.selectionBehavior = QAbstractItemView.SelectionBehavior.SelectRows;
-            projectList.selectionMode = QAbstractItemView.SelectionMode.SingleSelection;
+            projectList.selectionMode = QAbstractItemView.SelectionMode.MultiSelection;
             projectList.SetHorizontalHeaderItem(0, new QTableWidgetItem("Short name"));
             projectList.SetHorizontalHeaderItem(1, new QTableWidgetItem("Long name"));
             projectList.SetHorizontalHeaderItem(2, new QTableWidgetItem("Language"));
@@ -56,11 +56,14 @@ namespace ParatextQtPOC
             Resize(600, 300);
         }
 
-        public ScrText SelectedProject { get; private set; }
+        public List<ScrText> SelectedProjects { get; private set; }
 
         private void ProjectList_ItemSelectionChanged()
         {
-            okButton.Enabled = projectList.CurrentRow >= 0;
+            bool anySelected = false;
+            for (int i = 0; !anySelected && i < projectList.RowCount; i++)
+                anySelected = projectList.Item(i, 0).Selected;
+            okButton.Enabled = anySelected;
         }
 
         private void CancelButton_Clicked(bool obj)
@@ -71,9 +74,15 @@ namespace ParatextQtPOC
 
         private void OkButton_Clicked(bool obj)
         {
-            Debug.Assert(projectList.CurrentRow >= 0 && projectList.CurrentRow < scrTexts.Count);
+            //Debug.Assert(projectList.CurrentRow >= 0 && projectList.CurrentRow < scrTexts.Count);
             Result = (int)DialogCode.Accepted;
-            SelectedProject = scrTexts[projectList.CurrentRow];
+
+            SelectedProjects = new List<ScrText>();
+            for (int i = 0; i < scrTexts.Count; i++)
+            {
+                if (projectList.Item(i, 0).Selected)
+                    SelectedProjects.Add(scrTexts[i]);
+            }
             Close();
         }
     }

@@ -13,6 +13,18 @@ using System.Text;
 
 namespace ParatextQtPOC
 {
+    public class ReferenceChangedArgs
+    {
+        public readonly VerseRef PreviousVerseRef;
+        public readonly VerseRef NewVerseRef;
+
+        public ReferenceChangedArgs(VerseRef prevRef, VerseRef newRef)
+        {
+            PreviousVerseRef = prevRef;
+            NewVerseRef = newRef;
+        }
+    }
+
     internal class TextForm : QDockWidget
     {
         #region Constants/Member variables
@@ -21,6 +33,8 @@ namespace ParatextQtPOC
         private readonly List<AnnotationSource> annotationSources = new List<AnnotationSource>();
         private ScrText scrText;
         private int currentBook;
+        private VerseRef lastReference;
+        private bool loadingText;
         #endregion
 
         #region Constructor
@@ -64,13 +78,21 @@ namespace ParatextQtPOC
 
             set
             {
+                if (currentBook != value.BookNum)
+                    LoadBook(value.BookNum);
+                ScrollVerseIntoView(value);
                 UpdateWindowTitle();
             }
         }
+
+        public event EventHandler<ReferenceChangedArgs> ReferenceChanged;
         #endregion
         
         public void ChangeProject(ScrText newScrText)
         {
+            if (scrText == newScrText)
+                return;
+
             foreach (AnnotationSource annotationSource in annotationSources)
                 annotationSource.AnnotationsChanged -= AnnotationSource_AnnotationsChanged;
 
@@ -123,10 +145,25 @@ namespace ParatextQtPOC
             }
         }
 
+        protected override void OnFocusInEvent(QFocusEvent @event)
+        {
+            base.OnFocusInEvent(@event);
+            textBrowser.SetFocus(FocusReason.OtherFocusReason);
+        }
+
         #region Event handlers
         private void TextBrowser_CursorPositionChanged()
         {
+            if (loadingText)
+                return;
+
             UpdateWindowTitle();
+            VerseRef newReference = CurrentReference;
+            if (lastReference.IsDefault || !lastReference.Equals(newReference))
+            {
+                ReferenceChanged?.Invoke(this, new ReferenceChangedArgs(lastReference, newReference));
+                lastReference = newReference;
+            }
         }
 
         private void TextBrowser_AnchorClicked(QUrl linkUrl)
@@ -166,6 +203,7 @@ namespace ParatextQtPOC
         private void LoadUsfm(int bookNum)
         {
             currentBook = bookNum;
+            loadingText = true;
 
             Stopwatch sw = Stopwatch.StartNew();
             
@@ -175,9 +213,11 @@ namespace ParatextQtPOC
 
             List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
             FormatText(bookNum, tokens, cursor);
+            loadingText = false;
+            CurrentReference = new VerseRef(currentBook, 1, 1, scrText.Settings.Versification);
             
             sw.Stop();
-            Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} took {sw.ElapsedMilliseconds}ms");
+            Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
         }
 
         private void FormatText(int bookNum, List<UsfmToken> tokens, QTextCursor cursor)
@@ -314,6 +354,37 @@ namespace ParatextQtPOC
             }
 
             return lastReference != null ? new VerseRef(lastReference, scrText.Settings.Versification) : new VerseRef();
+        }
+
+        private void ScrollVerseIntoView(VerseRef verseRef)
+        {
+            verseRef.ChangeVersification(scrText.Settings.Versification);
+            QTextFragment verseFragment = null;
+            var block = textBrowser.Document.Begin();
+            for (; verseFragment == null && block != textBrowser.Document.End(); block = block.Next)
+            {
+                for (var iter = block.Begin(); !iter.AtEnd; iter++)
+                {
+                    var fragment = iter.Fragment;
+                    if (fragment.CharFormat.HasProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY))
+                    {
+                        var fragmentVerseRef = new VerseRef(fragment.CharFormat.StringProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY), scrText.Settings.Versification);
+                        if (verseRef.OverlapsAny(fragmentVerseRef))
+                        {
+                            verseFragment = fragment;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (verseFragment == null)
+                return;
+
+            QTextCursor cursor = new QTextCursor(block);
+            cursor.SetPosition(verseFragment.Position + verseFragment.Length + verseRef.Verse.Length + 1);
+            textBrowser.TextCursor = cursor;
+            textBrowser.EnsureCursorVisible();
         }
         #endregion
     }
