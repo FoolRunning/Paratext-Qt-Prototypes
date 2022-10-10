@@ -170,8 +170,33 @@ namespace ParatextQtPOC
                 return;
 
             int bookNum = bookSelector.ItemData(index).ToInt();
-            currentWindow.LoadBook(bookNum);
+            Stopwatch sw = Stopwatch.StartNew();
+
+            List<LoadingThread> tasks = new List<LoadingThread>();
+            foreach (var win in visibleWindows)
+            {
+                var thread = new LoadingThread(win, bookNum, QThread.CurrentThread);
+                tasks.Add(thread);
+                thread.Start();
+            }
+
+            while (tasks.Count > 0)
+            {
+                int finished = tasks.FindIndex(t => t.IsFinished);
+                if (finished >= 0)
+                {
+                    tasks[finished].CompleteLoading();
+                    tasks.RemoveAt(finished);
+                }
+                else
+                    System.Threading.Thread.Sleep(20);
+            }
+
+            currentWindow.CurrentReference = new VerseRef(bookNum, 1, 1, currentWindow.ScrText.Settings.Versification);
             currentWindow.SetFocus(QtCore.Qt.FocusReason.OtherFocusReason);
+            sw.Stop();
+            Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} for {visibleWindows.Count} windows took {sw.ElapsedMilliseconds}ms");
+
         }
 
         private void SaveButton_Clicked(bool isChecked)
@@ -263,5 +288,29 @@ namespace ParatextQtPOC
             return menuButton;
         }
         #endregion
+    }
+
+    internal class LoadingThread : QThread
+    {
+        private TextForm window;
+        private int bookNum;
+        private QThread uiThread;
+
+        internal LoadingThread(TextForm window, int bookNum, QThread uiThread)
+        {
+            this.window = window;
+            this.bookNum = bookNum;
+            this.uiThread = uiThread;
+        }
+
+        protected override void Run()
+        {
+            window.LoadBookAsync(bookNum, uiThread);
+        }
+
+        internal void CompleteLoading()
+        {
+            window.LoadBookComplete(bookNum);
+        }
     }
 }

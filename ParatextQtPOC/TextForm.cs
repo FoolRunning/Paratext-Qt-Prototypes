@@ -35,6 +35,7 @@ namespace ParatextQtPOC
         private int currentBook;
         private VerseRef lastReference;
         private bool loadingText;
+        private QTextDocument workDocument;
         #endregion
 
         #region Constructor
@@ -87,7 +88,7 @@ namespace ParatextQtPOC
 
         public event EventHandler<ReferenceChangedArgs> ReferenceChanged;
         #endregion
-        
+
         public void ChangeProject(ScrText newScrText)
         {
             if (scrText == newScrText)
@@ -125,6 +126,40 @@ namespace ParatextQtPOC
             textBrowser.Enabled = bookNum > 0;
             if (bookNum > 0)
                 LoadUsfm(bookNum);
+        }
+
+        public void LoadBookAsync(int bookNum, QThread uiThread)
+        {
+            if (textBrowser == null)
+                return; // Still initializing window
+
+            textBrowser.Enabled = bookNum > 0;
+            if (bookNum <= 0)
+                return;
+
+            currentBook = bookNum;
+            loadingText = true;
+
+            Stopwatch sw = Stopwatch.StartNew();
+
+            workDocument = new QTextDocument();
+            workDocument.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
+            QTextCursor cursor = new QTextCursor(workDocument);
+            Debug.Assert(cursor.AtStart);
+            List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
+            FormatText(bookNum, tokens, cursor);
+            workDocument.MoveToThread(uiThread);
+            sw.Stop();
+            Debug.WriteLine($"Formatting {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+        }
+
+        public void LoadBookComplete(int bookNum)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            loadingText = false;
+            textBrowser.Document = workDocument;
+            sw.Stop();
+            Debug.WriteLine($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
         }
 
         public void Save()
