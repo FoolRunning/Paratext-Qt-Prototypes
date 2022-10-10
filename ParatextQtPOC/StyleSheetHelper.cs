@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Paratext.Data;
 using QtCore.Qt;
 using QtGui;
@@ -56,8 +56,12 @@ namespace ParatextQtPOC
             else
                 key += "extra_" + bookNum;
 
-            if (!styleSheetCache.TryGetValue(key, out StyleSheetHelper helper))
-                styleSheetCache[key] = helper = new StyleSheetHelper(scrText, bookNum);
+            StyleSheetHelper helper;
+            lock (styleSheetCache)
+            {
+                if (!styleSheetCache.TryGetValue(key, out helper))
+                    styleSheetCache[key] = helper = new StyleSheetHelper(scrText, bookNum);
+            }
 
             return helper;
         }

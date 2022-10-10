@@ -1,4 +1,4 @@
-﻿using Paratext.Data;
+using Paratext.Data;
 using PtxUtils;
 using QtCore.Qt;
 using QtCore;
@@ -13,6 +13,7 @@ using System.Text;
 
 namespace ParatextQtPOC
 {
+    #region ReferenceChangedArgs class
     public class ReferenceChangedArgs
     {
         public readonly VerseRef PreviousVerseRef;
@@ -24,6 +25,7 @@ namespace ParatextQtPOC
             NewVerseRef = newRef;
         }
     }
+    #endregion
 
     internal class TextForm : QDockWidget
     {
@@ -45,6 +47,7 @@ namespace ParatextQtPOC
             FocusPolicy = FocusPolicy.StrongFocus;
 
             textBrowser = new PTXTextBrowser(null);
+            textBrowser.HorizontalScrollBarPolicy = ScrollBarPolicy.ScrollBarAlwaysOff;
             textBrowser.UndoRedoEnabled = true;
             textBrowser.ReadOnly = false;
             textBrowser.OpenLinks = false;
@@ -79,9 +82,13 @@ namespace ParatextQtPOC
 
             set
             {
-                if (currentBook != value.BookNum)
-                    LoadBook(value.BookNum);
-                ScrollVerseIntoView(value);
+                VerseRef newVerseRef = value;
+                newVerseRef.ChangeVersification(scrText.Settings.Versification);
+
+                if (currentBook != newVerseRef.BookNum)
+                    LoadBook(newVerseRef.BookNum);
+
+                ScrollVerseIntoView(newVerseRef);
                 UpdateWindowTitle();
             }
         }
@@ -116,52 +123,6 @@ namespace ParatextQtPOC
                 LoadBook(currentBook);
         }
 
-        public void LoadBook(int bookNum)
-        {
-            if (textBrowser == null)
-                return; // Still initializing window
-
-            textBrowser.Document.Clear();
-            textBrowser.Document.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
-            textBrowser.Enabled = bookNum > 0;
-            if (bookNum > 0)
-                LoadUsfm(bookNum);
-        }
-
-        public void LoadBookAsync(int bookNum, QThread uiThread)
-        {
-            if (textBrowser == null)
-                return; // Still initializing window
-
-            textBrowser.Enabled = bookNum > 0;
-            if (bookNum <= 0)
-                return;
-
-            currentBook = bookNum;
-            loadingText = true;
-
-            Stopwatch sw = Stopwatch.StartNew();
-
-            workDocument = new QTextDocument();
-            workDocument.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
-            QTextCursor cursor = new QTextCursor(workDocument);
-            Debug.Assert(cursor.AtStart);
-            List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
-            FormatText(bookNum, tokens, cursor);
-            workDocument.MoveToThread(uiThread);
-            sw.Stop();
-            Debug.WriteLine($"Formatting {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
-        }
-
-        public void LoadBookComplete(int bookNum)
-        {
-            Stopwatch sw = Stopwatch.StartNew();
-            loadingText = false;
-            textBrowser.Document = workDocument;
-            sw.Stop();
-            Debug.WriteLine($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
-        }
-
         public void Save()
         {
             // TODO: Allow user to select file location
@@ -187,17 +148,22 @@ namespace ParatextQtPOC
         }
 
         #region Event handlers
+        private void Thread_Finished()
+        {
+            LoadBookComplete(currentBook);
+        }
+
         private void TextBrowser_CursorPositionChanged()
         {
             if (loadingText)
                 return;
 
-            UpdateWindowTitle();
             VerseRef newReference = CurrentReference;
             if (lastReference.IsDefault || !lastReference.Equals(newReference))
             {
-                ReferenceChanged?.Invoke(this, new ReferenceChangedArgs(lastReference, newReference));
                 lastReference = newReference;
+                UpdateWindowTitle();
+                ReferenceChanged?.Invoke(this, new ReferenceChangedArgs(lastReference, newReference));
             }
         }
 
@@ -235,6 +201,54 @@ namespace ParatextQtPOC
             WindowTitle = $"{scrText.Name}: {CurrentReference} (Editable)";
         }
 
+        private void LoadBook(int bookNum)
+        {
+            if (textBrowser == null)
+                return; // Still initializing window
+
+            StyleSheetHelper.Get(scrText, bookNum); // Load cache on the main thread.
+
+            textBrowser.Enabled = bookNum > 0;
+
+            var thread = new LoadingThread(this, bookNum, QThread.CurrentThread);
+            thread.Finished += Thread_Finished;
+            thread.Start();
+        }
+
+        private void LoadBookAsync(int bookNum, QThread uiThread)
+        {
+            if (textBrowser == null || bookNum <= 0)
+                return; // Still initializing window
+
+            currentBook = bookNum;
+            loadingText = true;
+
+            Stopwatch sw = Stopwatch.StartNew();
+
+            workDocument = new QTextDocument();
+            workDocument.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
+            QTextCursor cursor = new QTextCursor(workDocument);
+            Debug.Assert(cursor.AtStart);
+            List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
+            FormatText(bookNum, tokens, cursor);
+            workDocument.MoveToThread(uiThread);
+
+            sw.Stop();
+            Debug.WriteLine($"Formatting {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+        }
+
+        private void LoadBookComplete(int bookNum)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+
+            loadingText = false;
+            textBrowser.Document = workDocument;
+            workDocument = null;
+
+            sw.Stop();
+            Debug.WriteLine($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+        }
+
         private void LoadUsfm(int bookNum)
         {
             currentBook = bookNum;
@@ -246,13 +260,18 @@ namespace ParatextQtPOC
             QTextCursor cursor = new QTextCursor(doc);
             Debug.Assert(cursor.AtStart);
 
+            textBrowser.CursorPositionChanged -= TextBrowser_CursorPositionChanged;
+            
             List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
             FormatText(bookNum, tokens, cursor);
             loadingText = false;
-            CurrentReference = new VerseRef(currentBook, 1, 1, scrText.Settings.Versification);
-            
+
+            textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
+
             sw.Stop();
             Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+
+            CurrentReference = new VerseRef(currentBook, 1, 1, scrText.Settings.Versification);
         }
 
         private void FormatText(int bookNum, List<UsfmToken> tokens, QTextCursor cursor)
@@ -376,7 +395,7 @@ namespace ParatextQtPOC
         
         private VerseRef ReferenceFromBlock(QTextBlock block, int position)
         {
-            string lastReference = null;
+            string lastBlockReference = null;
             QTextBlock.Iterator iterator;
             for (iterator = block.Begin(); !iterator.AtEnd; iterator++)
             {
@@ -385,15 +404,18 @@ namespace ParatextQtPOC
                     break;
                 
                 if (fragment.CharFormat.HasProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY))
-                    lastReference = fragment.CharFormat.property(TextEditUsfmLoad.VERSE_ID_PROPERTY).ToString();
+                    lastBlockReference = fragment.CharFormat.property(TextEditUsfmLoad.VERSE_ID_PROPERTY).ToString();
             }
 
-            return lastReference != null ? new VerseRef(lastReference, scrText.Settings.Versification) : new VerseRef();
+            return lastBlockReference != null ? new VerseRef(lastBlockReference, scrText.Settings.Versification) : new VerseRef();
         }
 
         private void ScrollVerseIntoView(VerseRef verseRef)
         {
-            verseRef.ChangeVersification(scrText.Settings.Versification);
+            Debug.Assert(verseRef.Versification == scrText.Settings.Versification);
+
+            Stopwatch sw = Stopwatch.StartNew();
+            
             QTextFragment verseFragment = null;
             var block = textBrowser.Document.Begin();
             for (; verseFragment == null && block != textBrowser.Document.End(); block = block.Next)
@@ -416,11 +438,45 @@ namespace ParatextQtPOC
             if (verseFragment == null)
                 return;
 
+            textBrowser.CursorPositionChanged -= TextBrowser_CursorPositionChanged;
+
             QTextCursor cursor = new QTextCursor(block);
             cursor.SetPosition(verseFragment.Position + verseFragment.Length + verseRef.Verse.Length + 1);
             textBrowser.TextCursor = cursor;
             textBrowser.EnsureCursorVisible();
+
+            textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
+
+            sw.Stop();
+            Debug.WriteLine($"Scrolling verse into view for {scrText.Name} took {sw.ElapsedMilliseconds}ms");
         }
         #endregion
+
+
+        private sealed class LoadingThread : QThread
+        {
+            private TextForm window;
+            private int bookNum;
+            private QThread uiThread;
+
+            internal LoadingThread(TextForm window, int bookNum, QThread uiThread)
+            {
+                this.window = window;
+                this.bookNum = bookNum;
+                this.uiThread = uiThread;
+            }
+
+            protected override void Run()
+            {
+                window.LoadBookAsync(bookNum, uiThread);
+
+                
+            }
+
+            internal void CompleteLoading()
+            {
+                window.LoadBookComplete(bookNum);
+            }
+        }
     }
 }

@@ -7,6 +7,7 @@
 
     <ApplicationIcon />
     <StartupObject />
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -571,7 +572,7 @@
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="copy &quot;C:\Qt\5.15.2\mingw81_64\bin\Qt5Core.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;copy &quot;C:\Qt\5.15.2\mingw81_64\bin\Qt5Gui.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;copy &quot;C:\Qt\5.15.2\mingw81_64\bin\Qt5Widgets.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;copy &quot;C:\Qt\Tools\mingw810_64\bin\*.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;mkdir &quot;$(TargetDir)platforms&quot;&#xD;&#xA;copy &quot;C:\Qt\5.15.2\mingw81_64\plugins\platforms\qwindows.dll&quot; &quot;$(TargetDir)platforms&quot;&#xD;&#xA;" />
+    <Exec Command="copy &quot;C:\Qt\5.12.4\mingw73_64\bin\Qt5Core.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;copy &quot;C:\Qt\5.12.4\mingw73_64\bin\Qt5Gui.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;copy &quot;C:\Qt\5.12.4\mingw73_64\bin\Qt5Widgets.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;copy &quot;C:\Qt\Tools\mingw730_64\bin\*.dll&quot; &quot;$(TargetDir)&quot;&#xD;&#xA;mkdir &quot;$(TargetDir)platforms&quot;&#xD;&#xA;copy &quot;C:\Qt\5.12.4\mingw73_64\plugins\platforms\qwindows.dll&quot; &quot;$(TargetDir)platforms&quot;&#xD;&#xA;" />
   </Target>
 
 </Project>

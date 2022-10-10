@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using QtCore;
 using QtCore.Qt;
@@ -123,15 +123,20 @@ namespace ParatextQtPOC
                     QBrush brush;
                     bool darker;
 
-                    QStyleOptionButton buttonOption = option as QStyleOptionButton;
-                    if (buttonOption != null && (buttonOption.Features & QStyleOptionButton.ButtonFeature.Flat) != 0) {
+                    if (option is QStyleOptionButton buttonOption && (buttonOption.Features & QStyleOptionButton.ButtonFeature.Flat) != 0) 
+                    {
                         brush = option.Palette.Window;
                         darker = (option.State & (StateFlag.StateSunken | StateFlag.StateOn)) != 0;
-                    } else {
-                        if ((option.State & (StateFlag.StateSunken | StateFlag.StateOn)) != 0) {
+                    } 
+                    else 
+                    {
+                        if ((option.State & (StateFlag.StateSunken | StateFlag.StateOn)) != 0) 
+                        {
                             brush = option.Palette.Mid;
                             darker = (option.State & StateFlag.StateSunken) == 0;
-                        } else {
+                        } 
+                        else 
+                        {
                             brush = option.Palette.Button;
                             darker = false;
                         }
@@ -210,8 +215,7 @@ namespace ParatextQtPOC
                 case ControlElement.CE_PushButtonLabel:
                 {
                     QStyleOptionButton myButtonOption = null;
-                    QStyleOptionButton buttonOption = option as QStyleOptionButton;
-                    if (buttonOption != null) 
+                    if (option is QStyleOptionButton buttonOption) 
                     {
                         myButtonOption = buttonOption;
                         if (myButtonOption.Palette.CurrentColorGroup != QPalette.ColorGroup.Disabled && 
