@@ -187,7 +187,7 @@ namespace ParatextQtPOC
             else
             {
                 // ENHANCE: We could look at the number of verses affected and only do a full refresh if updating the verses individually would take too long
-                LoadUsfm(currentBook);
+                LoadBook(currentBook);
             }
 
             sw.Stop();
@@ -203,38 +203,44 @@ namespace ParatextQtPOC
 
         private void LoadBook(int bookNum)
         {
-            if (textBrowser == null)
-                return; // Still initializing window
+            if (bookNum < 1 || bookNum > Canon.LastBook)
+                throw new ArgumentException($"bookNum ({bookNum}) is out of range");
+
+            if (loadingText)
+            {
+                Debug.WriteLine($"Reentrant call to load a book! Current:{currentBook}, New:{bookNum}");
+                return;
+            }
+
+            loadingText = true;
+            textBrowser.Enabled = true;
+            currentBook = bookNum;
 
             StyleSheetHelper.Get(scrText, bookNum); // Load cache on the main thread.
 
-            textBrowser.Enabled = bookNum > 0;
-
-            var thread = new LoadingThread(this, bookNum, QThread.CurrentThread);
+            var thread = new LoadingThread(this, bookNum);
             thread.Finished += Thread_Finished;
             thread.Start();
         }
 
-        private void LoadBookAsync(int bookNum, QThread uiThread)
+        private void LoadBookAsync(int bookNum)
         {
-            if (textBrowser == null || bookNum <= 0)
-                return; // Still initializing window
-
-            currentBook = bookNum;
-            loadingText = true;
+            if (bookNum <= 0)
+                return;
 
             Stopwatch sw = Stopwatch.StartNew();
 
-            workDocument = new QTextDocument();
-            workDocument.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
-            QTextCursor cursor = new QTextCursor(workDocument);
+            QTextDocument document = new QTextDocument();
+            document.DefaultTextOption.TextDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
+            QTextCursor cursor = new QTextCursor(document);
             Debug.Assert(cursor.AtStart);
             List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
             FormatText(bookNum, tokens, cursor);
-            workDocument.MoveToThread(uiThread);
+            document.MoveToThread(QCoreApplication.Instance.Thread);
 
             sw.Stop();
             Debug.WriteLine($"Formatting {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+            workDocument = document;
         }
 
         private void LoadBookComplete(int bookNum)
@@ -242,36 +248,16 @@ namespace ParatextQtPOC
             Stopwatch sw = Stopwatch.StartNew();
 
             loadingText = false;
-            textBrowser.Document = workDocument;
-            workDocument = null;
-
-            sw.Stop();
-            Debug.WriteLine($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
-        }
-
-        private void LoadUsfm(int bookNum)
-        {
-            currentBook = bookNum;
-            loadingText = true;
-
-            Stopwatch sw = Stopwatch.StartNew();
-            
-            QTextDocument doc = textBrowser.Document;
-            QTextCursor cursor = new QTextCursor(doc);
-            Debug.Assert(cursor.AtStart);
+            Debug.Assert(QThread.CurrentThread == QCoreApplication.Instance.Thread, "This was not called on the main thread (for some reason)");
+            Debug.Assert(workDocument.Thread == QThread.CurrentThread, "Failed to move document to main thread (for some reason): " + scrText.Name);
 
             textBrowser.CursorPositionChanged -= TextBrowser_CursorPositionChanged;
-            
-            List<UsfmToken> tokens = scrText.Parser.GetUsfmTokens(bookNum);
-            FormatText(bookNum, tokens, cursor);
-            loadingText = false;
-
+            textBrowser.Document = workDocument;
+            workDocument = null;
             textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
 
             sw.Stop();
-            Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
-
-            CurrentReference = new VerseRef(currentBook, 1, 1, scrText.Settings.Versification);
+            Debug.WriteLine($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
         }
 
         private void FormatText(int bookNum, List<UsfmToken> tokens, QTextCursor cursor)
@@ -452,31 +438,23 @@ namespace ParatextQtPOC
         }
         #endregion
 
-
+        #region LoadingThread class
         private sealed class LoadingThread : QThread
         {
-            private TextForm window;
-            private int bookNum;
-            private QThread uiThread;
+            private readonly TextForm window;
+            private readonly int bookNum;
 
-            internal LoadingThread(TextForm window, int bookNum, QThread uiThread)
+            internal LoadingThread(TextForm window, int bookNum)
             {
                 this.window = window;
                 this.bookNum = bookNum;
-                this.uiThread = uiThread;
             }
 
             protected override void Run()
             {
-                window.LoadBookAsync(bookNum, uiThread);
-
-                
-            }
-
-            internal void CompleteLoading()
-            {
-                window.LoadBookComplete(bookNum);
+                window.LoadBookAsync(bookNum);
             }
         }
+        #endregion
     }
 }
