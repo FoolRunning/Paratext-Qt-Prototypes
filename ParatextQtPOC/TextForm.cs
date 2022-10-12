@@ -96,6 +96,7 @@ namespace ParatextQtPOC
         public event EventHandler<ReferenceChangedArgs> ReferenceChanged;
         #endregion
 
+        #region Public methods
         public void ChangeProject(ScrText newScrText)
         {
             if (scrText == newScrText)
@@ -140,12 +141,15 @@ namespace ParatextQtPOC
                 }
             }
         }
+        #endregion
 
+        #region Overrides of QDockWidget
         protected override void OnFocusInEvent(QFocusEvent @event)
         {
             base.OnFocusInEvent(@event);
             textBrowser.SetFocus(FocusReason.OtherFocusReason);
         }
+        #endregion
 
         #region Event handlers
         private void Thread_Finished()
@@ -208,7 +212,7 @@ namespace ParatextQtPOC
 
             if (loadingText)
             {
-                Debug.WriteLine($"Reentrant call to load a book! Current:{currentBook}, New:{bookNum}");
+                Debug.WriteLine($"Re-entrant call to load a book! Current:{currentBook}, New:{bookNum}");
                 return;
             }
 
@@ -252,8 +256,12 @@ namespace ParatextQtPOC
             Debug.Assert(workDocument.Thread == QThread.CurrentThread, "Failed to move document to main thread (for some reason): " + scrText.Name);
 
             textBrowser.CursorPositionChanged -= TextBrowser_CursorPositionChanged;
+
+            QTextDocument prevDocument = textBrowser.Document;
             textBrowser.Document = workDocument;
             workDocument = null;
+            prevDocument?.Dispose();
+
             textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
 
             sw.Stop();
@@ -274,20 +282,20 @@ namespace ParatextQtPOC
 
         private void RefreshViewForVerse(VerseRef reference)
         {
-            FindBlocksForReference(reference, out QTextBlock startBlock, out QTextBlock endBlock, out string usfm);
+            FindBlocksForReference(reference, out SafeTextBlock startBlock, out SafeTextBlock endBlock, out string usfm);
             if (startBlock == null || endBlock == null)
                 return; // reference was not in the document
 
-            // TODO: Remove annotations from annotationsInView that will get deleted
-
             VerseRef startRef = ReferenceFromBlock(startBlock, startBlock.Position);
 
-            List<UsfmToken> tokens = UsfmToken.Tokenize(scrText, startRef.BookNum, usfm);
+            // TODO: Remove annotations from annotationsInView that will get deleted
+            //VerseRef endRef = ReferenceFromBlock(endBlock, endBlock.Position + endBlock.Length);
 
             int previousPosition = textBrowser.TextCursor.Position;
             QTextCursor cursor = new QTextCursor(startBlock);
             cursor.BeginEditBlock();
 
+            // Select the blocks and delete them from the view
             cursor.MovePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor,
                 endBlock.Position + endBlock.Length - startBlock.Position);
             cursor.RemoveSelectedText();
@@ -299,52 +307,61 @@ namespace ParatextQtPOC
             cursor.MovePosition(QTextCursor.MoveOperation.PreviousBlock);
             cursor.MovePosition(QTextCursor.MoveOperation.EndOfBlock);
 
+            // Generate the text formatting for the USFM that was in the deleted blocks. This will
+            // insert the new blocks where the cursor is currently located.
+            List<UsfmToken> tokens = UsfmToken.Tokenize(scrText, startRef.BookNum, usfm);
             UsfmParser parser = new UsfmParser(scrText.ScrStylesheet(startRef.BookNum), tokens,
                 startRef, new TextEditUsfmLoad(scrText, startRef.BookNum, cursor, annotationSources, annotationsInView));
             parser.ProcessTokens();
             
             cursor.EndEditBlock();
 
+            // Put the cursor back where it was before the reset
             QTextCursor newCursor = new QTextCursor(textBrowser.Document);
-            newCursor.MovePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.MoveAnchor, previousPosition);
+            newCursor.SetPosition(previousPosition);
             textBrowser.TextCursor = newCursor;
         }
 
-        private void FindBlocksForReference(VerseRef reference, out QTextBlock startBlock, out QTextBlock endBlock, out string containedUsfm)
+        private void FindBlocksForReference(VerseRef reference,
+            out SafeTextBlock startBlock, out SafeTextBlock endBlock,
+            out string containedUsfm)
         {
-            startBlock = null;
-            endBlock = null;
-            QTextBlock block = textBrowser.Document.Begin();
-            QTextBlock previousBlock = null;
             StringBuilder usfm = new StringBuilder();
-            while (block != textBrowser.Document.End())
+            SafeTextBlock theStartBlock = null;
+            SafeTextBlock theEndBlock = null;
+            SafeTextBlock previousBlock = null;
+            textBrowser.Document.IterateSafeBlocks(block =>
             {
-                VerseRef blockRef = ReferenceFromBlock(block, block.Position);
-                if (startBlock == null && blockRef.Equals(reference))
+                VerseRef blockStartRef = ReferenceFromBlock(block, block.Position);
+                SafeTextBlock blockToUse = previousBlock ?? block;
+                if (theStartBlock == null && blockStartRef.Equals(reference))
                 {
-                    startBlock = previousBlock;
-                    usfm.AppendLine(UsfmForBlock(previousBlock));
+                    theStartBlock = blockToUse;
+                    usfm.AppendLine(UsfmForBlock(blockToUse));
                 }
 
-                if (blockRef > reference)
+                if (blockStartRef > reference)
                 {
-                    if (startBlock == null)
+                    if (theStartBlock == null) // Reference is likely in the middle of a single block
                     {
-                        startBlock = previousBlock;
-                        usfm.AppendLine(UsfmForBlock(startBlock));
+                        theStartBlock = blockToUse;
+                        usfm.AppendLine(UsfmForBlock(theStartBlock));
                     }
 
-                    endBlock = previousBlock;
-                    break;
+                    theEndBlock = blockToUse;
+                    return false;
                 }
 
-                if (startBlock != null)
+                if (theStartBlock != null)
                     usfm.AppendLine(UsfmForBlock(block));
 
                 previousBlock = block;
-                block = block.Next;
-            }
+                return true;
+            });
 
+            startBlock = theStartBlock;
+            endBlock = theEndBlock;
+            
             if (endBlock == null && startBlock != null) // Can happen if we hit the end of the document
                 endBlock = previousBlock;
 
@@ -355,26 +372,29 @@ namespace ParatextQtPOC
         private static string UsfmForBlock(QTextBlock block)
         {
             StringBuilder strBldr = new StringBuilder();
-            QTextBlock.Iterator iterator;
-            for (iterator = block.Begin(); !iterator.AtEnd; iterator++)
+            block.IterateFragments(fragment =>
             {
-                QTextFragment fragment = iterator.Fragment;
-                if (fragment.CharFormat.HasProperty(TextEditUsfmLoad.SPECIAL_PROPERTY))
+                string text = fragment.Text; // TODO: Currently this is a memory leak we can't do anything about!
+
+                using QTextCharFormat charFormat = fragment.CharFormat;
+                if (charFormat.HasProperty(TextEditUsfmLoad.SPECIAL_PROPERTY))
                 {
-                    switch (fragment.CharFormat.property(TextEditUsfmLoad.SPECIAL_PROPERTY).ToInt())
+                    switch (charFormat.property(TextEditUsfmLoad.SPECIAL_PROPERTY).ToInt())
                     {
                         case TextEditUsfmLoad.SPECIAL_VERSE:
                             strBldr.AppendLine();
-                            strBldr.Append(fragment.Text);
+                            strBldr.Append(text);
                             break;
                         case TextEditUsfmLoad.SPECIAL_FOOTNOTE_CALLER:
-                            strBldr.Append(fragment.CharFormat.ToolTip);
+                            strBldr.Append(charFormat.ToolTip);
                             break;
                     }
                 }
-                else if (!fragment.CharFormat.HasProperty(TextEditUsfmLoad.IGNORE_FRAGMENT_PROPERTY) && (fragment.Text.Length > 1 || !fragment.Text.StartsWith(StringUtils.orcCharacter)))
-                    strBldr.Append(fragment.Text);
-            }
+                else if (!charFormat.HasProperty(TextEditUsfmLoad.IGNORE_FRAGMENT_PROPERTY) && (text.Length > 1 || !text.StartsWith(StringUtils.orcCharacter)))
+                    strBldr.Append(text);
+
+                return true;
+            });
 
             return strBldr.ToString();
         }
@@ -382,16 +402,16 @@ namespace ParatextQtPOC
         private VerseRef ReferenceFromBlock(QTextBlock block, int position)
         {
             string lastBlockReference = null;
-            QTextBlock.Iterator iterator;
-            for (iterator = block.Begin(); !iterator.AtEnd; iterator++)
+            block.IterateFragments(fragment =>
             {
-                QTextFragment fragment = iterator.Fragment;
                 if (fragment.Position > position)
-                    break;
-                
-                if (fragment.CharFormat.HasProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY))
-                    lastBlockReference = fragment.CharFormat.property(TextEditUsfmLoad.VERSE_ID_PROPERTY).ToString();
-            }
+                    return false;
+
+                using QTextCharFormat charFormat = fragment.CharFormat;
+                if (charFormat.HasProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY))
+                    lastBlockReference = charFormat.property(TextEditUsfmLoad.VERSE_ID_PROPERTY).ToString();
+                return true;
+            });
 
             return lastBlockReference != null ? new VerseRef(lastBlockReference, scrText.Settings.Versification) : new VerseRef();
         }
@@ -401,33 +421,34 @@ namespace ParatextQtPOC
             Debug.Assert(verseRef.Versification == scrText.Settings.Versification);
 
             Stopwatch sw = Stopwatch.StartNew();
-            
-            QTextFragment verseFragment = null;
-            var block = textBrowser.Document.Begin();
-            for (; verseFragment == null && block != textBrowser.Document.End(); block = block.Next)
-            {
-                for (var iter = block.Begin(); !iter.AtEnd; iter++)
-                {
-                    var fragment = iter.Fragment;
-                    if (fragment.CharFormat.HasProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY))
-                    {
-                        var fragmentVerseRef = new VerseRef(fragment.CharFormat.StringProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY), scrText.Settings.Versification);
-                        if (verseRef.OverlapsAny(fragmentVerseRef))
-                        {
-                            verseFragment = fragment;
-                            break;
-                        }
-                    }
-                }
-            }
 
-            if (verseFragment == null)
+            int verseFragmentOffset = -1;
+            textBrowser.Document.IterateBlocks(block =>
+            {
+                block.IterateFragments(fragment =>
+                {
+                    using QTextCharFormat charFormat = fragment.CharFormat;
+                    if (!charFormat.HasProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY))
+                        return true;
+
+                    VerseRef fragmentVerseRef = new VerseRef(charFormat.StringProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY), scrText.Settings.Versification);
+                    if (!verseRef.OverlapsAny(fragmentVerseRef))
+                        return true;
+
+                    verseFragmentOffset = fragment.Position + fragment.Length;
+                    return false;
+                });
+
+                return verseFragmentOffset == -1;
+            });
+
+            if (verseFragmentOffset == -1)
                 return;
 
             textBrowser.CursorPositionChanged -= TextBrowser_CursorPositionChanged;
 
-            QTextCursor cursor = new QTextCursor(block);
-            cursor.SetPosition(verseFragment.Position + verseFragment.Length + verseRef.Verse.Length + 1);
+            QTextCursor cursor = new QTextCursor(textBrowser.Document);
+            cursor.SetPosition(verseFragmentOffset + verseRef.Verse.Length + 1);
             textBrowser.TextCursor = cursor;
             textBrowser.EnsureCursorVisible();
 
