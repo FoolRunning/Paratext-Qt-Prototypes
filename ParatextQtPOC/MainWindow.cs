@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using Paratext.Data;
 using QtCore;
+using QtCore.Qt;
 using QtGui;
 using QtWidgets;
 using SIL.Scripture;
@@ -178,12 +179,16 @@ namespace ParatextQtPOC
 
             currentWindow.SetFocus(QtCore.Qt.FocusReason.OtherFocusReason);
             sw.Stop();
-            Debug.WriteLine($"Loading {Canon.BookNumberToId(bookNum)} for {visibleWindows.Count} windows took {sw.ElapsedMilliseconds}ms");
+            Trace.TraceInformation($"Loading {Canon.BookNumberToId(bookNum)} for {visibleWindows.Count} windows took {sw.ElapsedMilliseconds}ms");
         }
 
         private void SaveButton_Clicked(bool isChecked)
         {
-            currentWindow?.Save();
+            foreach (var win in visibleWindows)
+                win.Save(win == currentWindow);
+
+            // return focus to current window
+            currentWindow?.SetFocus(FocusReason.OtherFocusReason);
         }
 
         private void Menu_Open(bool isChecked)
@@ -198,7 +203,7 @@ namespace ParatextQtPOC
                     Stopwatch sw = Stopwatch.StartNew();
                     TextForm newWindow = new TextForm(project, this);
                     sw.Stop();
-                    Debug.WriteLine($"Creating TextForm for {project.Name} took {sw.ElapsedMilliseconds}ms");
+                    Trace.TraceInformation($"Creating TextForm for {project.Name} took {sw.ElapsedMilliseconds}ms");
 
                     sw.Restart();
                     newWindow.AllowedAreas = CentralWidget == null ? QtCore.Qt.DockWidgetArea.NoDockWidgetArea : QtCore.Qt.DockWidgetArea.AllDockWidgetAreas;
@@ -213,7 +218,7 @@ namespace ParatextQtPOC
                         AddDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, newWindow);
 
                     sw.Stop();
-                    Debug.WriteLine($"Adding project {project.Name} to window took {sw.ElapsedMilliseconds}ms");
+                    Trace.TraceInformation($"Adding project {project.Name} to window took {sw.ElapsedMilliseconds}ms");
                     CurrentWindow = newWindow;
                 }
             }
@@ -221,7 +226,7 @@ namespace ParatextQtPOC
         
         private void Menu_Save(bool isChecked)
         {
-            currentWindow?.Save();
+            currentWindow?.Save(true);
         }
 
         private void Menu_Exit(bool isChecked)

@@ -38,6 +38,7 @@ namespace ParatextQtPOC
         private VerseRef lastReference;
         private bool loadingText;
         private QTextDocument workDocument;
+        private int lastPosition;
         #endregion
 
         #region Constructor
@@ -124,10 +125,15 @@ namespace ParatextQtPOC
                 LoadBook(currentBook);
         }
 
-        public void Save()
+        public void Save(bool isActiveWindow)
         {
-            // TODO: Allow user to select file location
-            using (TextWriter writer = new StreamWriter("./Temp.sfm"))
+            if (!textBrowser.Document.Modified)
+                return;
+
+            Stopwatch sw = Stopwatch.StartNew();
+            // only want to restore position for the active window or we'll get excess scrolling
+            int curPosition = isActiveWindow ? textBrowser.TextCursor.Position : -1;
+            using (TextWriter writer = new StringWriter())
             {
                 QTextBlock block = textBrowser.Document.Begin();
                 while (block != textBrowser.Document.End())
@@ -139,7 +145,16 @@ namespace ParatextQtPOC
 
                     block = block.Next;
                 }
+
+                scrText.PutText(currentBook, 0, true, writer.ToString(), null);
             }
+
+            sw.Stop();
+            Trace.TraceInformation($"Saving {Canon.BookNumberToId(currentBook)} for {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+
+            // Not always needed, but doing a worst case implementation
+            LoadBook(currentBook, curPosition);
+
         }
         #endregion
 
@@ -195,24 +210,26 @@ namespace ParatextQtPOC
             }
 
             sw.Stop();
-            Debug.WriteLine($"Refreshing {Canon.BookNumberToId(currentBook)} took {sw.ElapsedMilliseconds}ms");
+            Trace.TraceInformation($"Refreshing {Canon.BookNumberToId(currentBook)} took {sw.ElapsedMilliseconds}ms");
         }
         #endregion
 
         #region Private helper methods
         private void UpdateWindowTitle()
         {
-            WindowTitle = $"{scrText.Name}: {CurrentReference} (Editable)";
+            string editable = currentBook > 0 && scrText.Permissions.CanEdit(currentBook) ? "(Editable)" : "";
+            WindowTitle = $"{scrText.Name}: {CurrentReference} {editable}";
         }
 
-        private void LoadBook(int bookNum)
+        private void LoadBook(int bookNum, int restorePosition = -1)
         {
+            lastPosition = restorePosition;
             if (bookNum < 1 || bookNum > Canon.LastBook)
                 throw new ArgumentException($"bookNum ({bookNum}) is out of range");
 
             if (loadingText)
             {
-                Debug.WriteLine($"Re-entrant call to load a book! Current:{currentBook}, New:{bookNum}");
+                Trace.TraceInformation($"Re-entrant call to load a book! Current:{currentBook}, New:{bookNum}");
                 return;
             }
 
@@ -243,7 +260,7 @@ namespace ParatextQtPOC
             document.MoveToThread(QCoreApplication.Instance.Thread);
 
             sw.Stop();
-            Debug.WriteLine($"Formatting {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+            Trace.TraceInformation($"Formatting {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
             workDocument = document;
         }
 
@@ -263,9 +280,23 @@ namespace ParatextQtPOC
             prevDocument?.Dispose();
 
             textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
+            textBrowser.Document.ClearUndoRedoStacks();
+            textBrowser.Document.Modified = false;
 
             sw.Stop();
-            Debug.WriteLine($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+            Trace.TraceInformation($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+
+            if (lastPosition <= 0)
+                return;
+
+            sw.Restart();
+            QTextCursor cursor = new QTextCursor(textBrowser.Document);
+            cursor.SetPosition(lastPosition);
+            textBrowser.TextCursor = cursor;
+            textBrowser.EnsureCursorVisible();
+            sw.Stop();
+            Trace.TraceInformation($"Restore cursor {Canon.BookNumberToId(currentBook)} for {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+            lastPosition = -1;
         }
 
         private void FormatText(int bookNum, List<UsfmToken> tokens, QTextCursor cursor)
@@ -455,7 +486,7 @@ namespace ParatextQtPOC
             textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
 
             sw.Stop();
-            Debug.WriteLine($"Scrolling verse into view for {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+            Trace.TraceInformation($"Scrolling verse into view for {scrText.Name} took {sw.ElapsedMilliseconds}ms");
         }
         #endregion
 
