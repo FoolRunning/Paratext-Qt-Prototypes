@@ -208,6 +208,11 @@
             <para>See also QSvgWidget, Qt SVG C++ Classes, SVG Viewer Example, and QPicture.</para>
             </remarks>
         </member>
+        <member name="E:QtSvg.QSvgRenderer.RepaintNeeded">
+            <summary>
+            <para>This signal is emitted whenever the rendering of the document needs to be updated, usually for the purposes of animation.</para>
+            </summary>
+        </member>
         <member name="M:QtSvg.QSvgRenderer.#ctor(QtCore.QObject)">
             <summary>Constructs a new renderer with the given parent.</summary>
         </member>
@@ -275,11 +280,6 @@
         </member>
         <member name="M:QtSvg.QSvgRenderer.Render(QtGui.QPainter,System.String)">
             <summary>Renders the given element with elementId using the given painter on the specified bounds. If the bounding rectangle is not specified the SVG element is mapped to the whole paint device.</summary>
-        </member>
-        <member name="E:QtSvg.QSvgRenderer.RepaintNeeded">
-            <summary>
-            <para>This signal is emitted whenever the rendering of the document needs to be updated, usually for the purposes of animation.</para>
-            </summary>
         </member>
         <member name="P:QtSvg.QSvgRenderer.ViewBox">
             <summary>

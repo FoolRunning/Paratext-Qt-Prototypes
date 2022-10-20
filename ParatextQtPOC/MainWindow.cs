@@ -24,6 +24,7 @@ namespace ParatextQtPOC
         //private readonly QLabel referenceLabel;
         private TextForm currentWindow;
         private bool referenceChanging;
+        private TraceTimer timer;
         #endregion
 
         #region Constructor
@@ -82,6 +83,10 @@ namespace ParatextQtPOC
             AddToolBar(toolbar);
             
             Resize(1024, 768);
+
+            timer = new TraceTimer(this);
+            timer.Interval = 1000;
+            timer.Start();
         }
         #endregion
 
@@ -196,6 +201,12 @@ namespace ParatextQtPOC
             OpenProjectDialog dialog = new OpenProjectDialog(this);
             dialog.Exec();
 
+            var location = new[]
+            {
+                QtCore.Qt.DockWidgetArea.RightDockWidgetArea, QtCore.Qt.DockWidgetArea.BottomDockWidgetArea,
+                QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, QtCore.Qt.DockWidgetArea.TopDockWidgetArea
+            };
+
             if (dialog.SelectedProjects != null)
             {
                 foreach (var project in dialog.SelectedProjects)
@@ -215,7 +226,7 @@ namespace ParatextQtPOC
                     if (CentralWidget == null)
                         CentralWidget = newWindow;
                     else
-                        AddDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, newWindow);
+                        AddDockWidget(location[visibleWindows.Count % 4], newWindow);
 
                     sw.Stop();
                     Trace.TraceInformation($"Adding project {project.Name} to window took {sw.ElapsedMilliseconds}ms");
@@ -275,5 +286,23 @@ namespace ParatextQtPOC
             return menuButton;
         }
         #endregion
+
+        internal class TraceTimer : QTimer
+        {
+            private DateTime lastTime;
+
+            internal TraceTimer(QObject parent) : base(parent)
+            {
+                lastTime = DateTime.Now;
+            }
+
+            protected override void OnTimerEvent(QTimerEvent e)
+            {
+                DateTime now = DateTime.Now;
+                TimeSpan elapsed = now - lastTime;
+                Trace.TraceInformation($"It is now {now} and {elapsed.TotalSeconds}secs passed since last tick");
+                lastTime = now;
+            }
+        }
     }
 }
