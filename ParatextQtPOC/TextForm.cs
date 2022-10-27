@@ -239,11 +239,17 @@ namespace ParatextQtPOC
 
             StyleSheetHelper.Get(scrText, bookNum); // Load cache on the main thread.
 
-            //var thread = new LoadingThread(this, bookNum);
-            //thread.Finished += Thread_Finished;
-            //thread.Start();
-            LoadBookAsync(bookNum);
-            Thread_Finished();
+            if (MainWindow.Async)
+            {
+                var thread = new LoadingThread(this, bookNum);
+                thread.Finished += Thread_Finished;
+                thread.Start();
+            }
+            else
+            {
+                LoadBookAsync(bookNum);
+                Thread_Finished();
+            }
         }
 
         private void LoadBookAsync(int bookNum)

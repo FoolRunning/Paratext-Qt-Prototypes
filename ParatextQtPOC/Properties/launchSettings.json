@@ -2,6 +2,7 @@
   "profiles": {
     "ParatextQtPOC": {
       "commandName": "Project",
+      "commandLineArgs": "12res_JOB",
       "nativeDebugging": false
     }
   }

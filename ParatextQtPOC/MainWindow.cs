@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using Paratext.Data;
 using QtCore;
 using QtCore.Qt;
@@ -21,10 +22,17 @@ namespace ParatextQtPOC
         private readonly List<TextForm> visibleWindows = new List<TextForm>();
         private readonly QComboBox bookSelector;
         private readonly QComboBox projectSelector;
+        private readonly DockWidgetArea[] location = new[]
+        {
+            QtCore.Qt.DockWidgetArea.RightDockWidgetArea, QtCore.Qt.DockWidgetArea.BottomDockWidgetArea,
+            QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, QtCore.Qt.DockWidgetArea.TopDockWidgetArea
+        };
+
         //private readonly QLabel referenceLabel;
         private TextForm currentWindow;
         private bool referenceChanging;
         private TraceTimer timer;
+        private bool alreadyPainted;
         #endregion
 
         #region Constructor
@@ -91,6 +99,10 @@ namespace ParatextQtPOC
         #endregion
 
         #region Properties
+        public string TestCase;
+
+        public static bool Async;
+
         private TextForm CurrentWindow
         {
             get => currentWindow;
@@ -158,11 +170,22 @@ namespace ParatextQtPOC
 
             try
             {
+                var sw = Stopwatch.StartNew();
                 referenceChanging = true;
                 TextForm window = (TextForm)(obj);
+                int winCount = 0;
                 foreach (var win in visibleWindows)
+                {
                     if (win != window)
+                    {
                         win.CurrentReference = args.NewVerseRef;
+                        winCount++;
+                    }
+                }
+                sw.Stop();
+                if (winCount > 0)
+                    Trace.TraceInformation($"Changing to {args.NewVerseRef} for {winCount} windows took {sw.ElapsedMilliseconds}ms");
+
             }
             finally
             {
@@ -176,15 +199,23 @@ namespace ParatextQtPOC
                 return;
 
             int bookNum = bookSelector.ItemData(index).ToInt();
+            OpenBook(bookNum, 1, 1);
+        }
+
+        private void OpenBook(int bookNum, int chapterNum, int verseNum)
+        {
             Stopwatch sw = Stopwatch.StartNew();
 
-            Window_ReferenceChanged(null, new ReferenceChangedArgs(new VerseRef(), new VerseRef(bookNum, 1, 1, currentWindow.ScrText.Settings.Versification)));
+            Window_ReferenceChanged(null,
+                new ReferenceChangedArgs(new VerseRef(),
+                    new VerseRef(bookNum, chapterNum, verseNum, currentWindow.ScrText.Settings.Versification)));
             //foreach (var win in visibleWindows)
             //   win.CurrentReference = new VerseRef(bookNum, 1, 1, currentWindow.ScrText.Settings.Versification);
 
             currentWindow.SetFocus(QtCore.Qt.FocusReason.OtherFocusReason);
             sw.Stop();
-            Trace.TraceInformation($"Loading {Canon.BookNumberToId(bookNum)} for {visibleWindows.Count} windows took {sw.ElapsedMilliseconds}ms");
+            Trace.TraceInformation(
+                $"Loading {Canon.BookNumberToId(bookNum)} for {visibleWindows.Count} windows took {sw.ElapsedMilliseconds}ms");
         }
 
         private void SaveButton_Clicked(bool isChecked)
@@ -201,40 +232,38 @@ namespace ParatextQtPOC
             OpenProjectDialog dialog = new OpenProjectDialog(this);
             dialog.Exec();
 
-            var location = new[]
-            {
-                QtCore.Qt.DockWidgetArea.RightDockWidgetArea, QtCore.Qt.DockWidgetArea.BottomDockWidgetArea,
-                QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, QtCore.Qt.DockWidgetArea.TopDockWidgetArea
-            };
-
             if (dialog.SelectedProjects != null)
             {
-                foreach (var project in dialog.SelectedProjects)
-                {
-                    Stopwatch sw = Stopwatch.StartNew();
-                    TextForm newWindow = new TextForm(project, this);
-                    sw.Stop();
-                    Trace.TraceInformation($"Creating TextForm for {project.Name} took {sw.ElapsedMilliseconds}ms");
-
-                    sw.Restart();
-                    newWindow.AllowedAreas = CentralWidget == null ? QtCore.Qt.DockWidgetArea.NoDockWidgetArea : QtCore.Qt.DockWidgetArea.AllDockWidgetAreas;
-                    newWindow.FocusInEvent += (s, e) => CurrentWindow = (TextForm)s;
-                    newWindow.CloseEvent += Window_CloseEvent;
-                    newWindow.ReferenceChanged += Window_ReferenceChanged;
-                    visibleWindows.Add(newWindow);
-
-                    if (CentralWidget == null)
-                        CentralWidget = newWindow;
-                    else
-                        AddDockWidget(location[visibleWindows.Count % 4], newWindow);
-
-                    sw.Stop();
-                    Trace.TraceInformation($"Adding project {project.Name} to window took {sw.ElapsedMilliseconds}ms");
-                    CurrentWindow = newWindow;
-                }
+                foreach (var project in dialog.SelectedProjects) OpenProject(project);
             }
         }
-        
+
+        private void OpenProject(ScrText project)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            TextForm newWindow = new TextForm(project, this);
+            sw.Stop();
+            Trace.TraceInformation($"Creating TextForm for {project.Name} took {sw.ElapsedMilliseconds}ms");
+
+            sw.Restart();
+            newWindow.AllowedAreas = CentralWidget == null
+                ? QtCore.Qt.DockWidgetArea.NoDockWidgetArea
+                : QtCore.Qt.DockWidgetArea.AllDockWidgetAreas;
+            newWindow.FocusInEvent += (s, e) => CurrentWindow = (TextForm)s;
+            newWindow.CloseEvent += Window_CloseEvent;
+            newWindow.ReferenceChanged += Window_ReferenceChanged;
+            visibleWindows.Add(newWindow);
+
+            if (CentralWidget == null)
+                CentralWidget = newWindow;
+            else
+                AddDockWidget(location[visibleWindows.Count % 4], newWindow);
+
+            sw.Stop();
+            Trace.TraceInformation($"Adding project {project.Name} to window took {sw.ElapsedMilliseconds}ms");
+            CurrentWindow = newWindow;
+        }
+
         private void Menu_Save(bool isChecked)
         {
             currentWindow?.Save(true);
@@ -244,6 +273,51 @@ namespace ParatextQtPOC
         {
             Close();
         }
+
+        protected override void OnPaintEvent(QPaintEvent @event)
+        {
+            base.OnPaintEvent(@event);
+            if (alreadyPainted)
+                return;
+            alreadyPainted = true;
+            if (string.IsNullOrEmpty(TestCase))
+                return;
+
+            string[] testResources = new[]
+            {
+                "NAV", "NIV84", "WEB", "RSV", "BENCLBSI", "HERV", "JCB", "VUL83", "HEB/GRK", "RVR1960", "ESVUS16", "CCB"
+            };
+
+            ScrText project;
+            string[] parts = TestCase.Split("_");
+            if (parts.Length < 2)
+                return;
+
+            if (parts[0].StartsWith("res-", StringComparison.OrdinalIgnoreCase))
+            {
+                int nbrResources = int.Parse(parts[0].Substring(4));
+                foreach (var projectName in testResources.Take(nbrResources))
+                {
+                    project = ScrTextCollection.Find(projectName);
+                    if (project == null)
+                        continue;
+                    OpenProject(project);
+                }
+            }
+            else
+            {
+                project = ScrTextCollection.Find(parts[0]);
+                if (project == null)
+                    return;
+                OpenProject(project);
+            }
+			
+			int bookNum = Canon.BookIdToNumber(parts[1]);
+			int chapterNum = parts.Length < 3 ? 1 : int.Parse(parts[2]);
+			int verseNum = parts.Length < 4 ? 1 : int.Parse(parts[3]);
+			OpenBook(bookNum, chapterNum, verseNum);
+        }
+
         #endregion
 
         #region Private helper methods
