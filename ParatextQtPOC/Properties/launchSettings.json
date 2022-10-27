@@ -2,7 +2,7 @@
   "profiles": {
     "ParatextQtPOC": {
       "commandName": "Project",
-      "commandLineArgs": "12res_JOB",
+      "commandLineArgs": "res-12_3JN\r\nasync",
       "nativeDebugging": false
     }
   }

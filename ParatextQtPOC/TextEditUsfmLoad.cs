@@ -24,6 +24,7 @@ namespace ParatextQtPOC
         private readonly ScrText scrText;
         private readonly List<Annotation> currentVerseAnnotations = new List<Annotation>();
         private readonly QTextCharFormat markerFormat = new QTextCharFormat();
+        private readonly QTextCharFormat markerErrorFormat = new QTextCharFormat();
         private readonly QTextCharFormat callerFormat = new QTextCharFormat();
         private readonly QTextCharFormat attributeFormat = new QTextCharFormat();
         private readonly QTextCursor cursor;
@@ -54,6 +55,9 @@ namespace ParatextQtPOC
             styleSheet = scrText.ScrStylesheet(bookNum);
             styleHelper = StyleSheetHelper.Get(scrText, bookNum);
 
+            markerErrorFormat.Foreground = new QBrush(GlobalColor.Red);
+            markerErrorFormat.Font = new QFont("Arial", 14);
+            
             markerFormat.Foreground = new QBrush(GlobalColor.DarkGray);
             markerFormat.Font = new QFont("Arial", 14);
             // markerFormat.SetProperty(TextEdit.IGNORE_FRAGMENT_PROPERTY, 1);
@@ -92,6 +96,12 @@ namespace ParatextQtPOC
 
         public override void StartPara(UsfmParserState state, string marker, bool unknown, NamedAttribute[] namedAttributes)
         {
+            if (unknown)
+            {
+                cursor.InsertText("\\" + marker, markerErrorFormat);
+                return;
+            }
+
             ParagraphStyleInfo styleInfo = styleHelper.GetParaStyle(marker);
             if (styleInfo != null)
             {

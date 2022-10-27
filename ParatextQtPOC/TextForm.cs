@@ -30,7 +30,10 @@ namespace ParatextQtPOC
     internal class TextForm : QDockWidget
     {
         #region Constants/Member variables
+        private const int ReformatDelay = 500;
+
         private readonly QTextBrowser textBrowser;
+        private readonly QTimer timer;
         private readonly Dictionary<string, Annotation> annotationsInView = new Dictionary<string, Annotation>();
         private readonly List<AnnotationSource> annotationSources = new List<AnnotationSource>();
         private ScrText scrText;
@@ -49,15 +52,21 @@ namespace ParatextQtPOC
 
             textBrowser = new PTXTextBrowser(null);
             textBrowser.HorizontalScrollBarPolicy = ScrollBarPolicy.ScrollBarAlwaysOff;
+            textBrowser.VerticalScrollBarPolicy = ScrollBarPolicy.ScrollBarAlwaysOn;
             textBrowser.UndoRedoEnabled = true;
-            textBrowser.ReadOnly = false;
             textBrowser.OpenLinks = false;
             textBrowser.OpenExternalLinks = false;
+            textBrowser.AutoFormatting = QTextEdit.AutoFormattingFlag.AutoNone;
+            textBrowser.PlaceholderText = "Please load a book";
             textBrowser.TextInteractionFlags |= TextInteractionFlag.LinksAccessibleByMouse;
             textBrowser.Enabled = false;
             textBrowser.AnchorClicked += TextBrowser_AnchorClicked;
-            textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
+            MinimumWidth = 600;
             Widget = textBrowser;
+
+            timer = new QTimer(this);
+            timer.SingleShot = true;
+            timer.Timeout += Timer_Timeout;
 
             Resize(1024, 768);
 
@@ -110,19 +119,25 @@ namespace ParatextQtPOC
 
             scrText = newScrText;
 
-            annotationSources.Add(new NotesAnnotationSource(scrText));
-            annotationSources.Add(new TranslationPromptsAnnotationSource(scrText));
+            //annotationSources.Add(new NotesAnnotationSource(scrText));
+            //annotationSources.Add(new TranslationPromptsAnnotationSource(scrText));
 
             foreach (var annotationSource in annotationSources)
                 annotationSource.AnnotationsChanged += AnnotationSource_AnnotationsChanged;
 
-            textBrowser.LayoutDirection = scrText.RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
-            textBrowser.Alignment = scrText.RightToLeft ? AlignmentFlag.AlignRight | AlignmentFlag.AlignAbsolute : AlignmentFlag.AlignLeft;
+            BeginViewUpdate();
+
+            textBrowser.Clear();
+            textBrowser.ReadOnly = newScrText.IsResourceProject;
+
+            textBrowser.TextInteractionFlags |= TextInteractionFlag.TextSelectableByKeyboard | TextInteractionFlag.TextSelectableByMouse;
 
             UpdateWindowTitle();
 
             if (currentBook != 0)
-                LoadBook(currentBook);
+                LoadBook(currentBook); // Calls EndTextUpdate
+            else
+                EndViewUpdate();
         }
 
         public void Save(bool isActiveWindow)
@@ -197,6 +212,15 @@ namespace ParatextQtPOC
             }
         }
 
+        private void TextBrowser_KeyPressEvent(object s, QKeyEvent e)
+        {
+            if (!string.IsNullOrEmpty(e.Text))
+            {
+                timer.Stop();
+                timer.Start(ReformatDelay);
+            }
+        }
+
         private void AnnotationSource_AnnotationsChanged(object sender, AnnotationsChangedEventArgs e)
         {
             Stopwatch sw = Stopwatch.StartNew();
@@ -212,6 +236,11 @@ namespace ParatextQtPOC
             sw.Stop();
             Trace.TraceInformation($"Refreshing {Canon.BookNumberToId(currentBook)} took {sw.ElapsedMilliseconds}ms");
         }
+
+        private void Timer_Timeout()
+        {
+            RefreshViewForVerse(CurrentReference);
+        }
         #endregion
 
         #region Private helper methods
@@ -219,6 +248,20 @@ namespace ParatextQtPOC
         {
             string editable = currentBook > 0 && scrText.Permissions.CanEdit(currentBook) ? "(Editable)" : "";
             WindowTitle = $"{scrText.Name}: {CurrentReference} {editable}";
+        }
+
+        private void BeginViewUpdate()
+        {
+            textBrowser.CursorPositionChanged -= TextBrowser_CursorPositionChanged;
+            //textBrowser.TextChanged -= TextBrowser_TextChanged;
+            textBrowser.KeyPressEvent -= TextBrowser_KeyPressEvent;
+        }
+
+        private void EndViewUpdate()
+        {
+            textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
+            //textBrowser.TextChanged += TextBrowser_TextChanged;
+            textBrowser.KeyPressEvent += TextBrowser_KeyPressEvent;
         }
 
         private void LoadBook(int bookNum, int restorePosition = -1)
@@ -235,10 +278,13 @@ namespace ParatextQtPOC
 
             loadingText = true;
             textBrowser.Enabled = true;
+            textBrowser.LayoutDirection = scrText.GetJoinedText(bookNum).RightToLeft ? LayoutDirection.RightToLeft : LayoutDirection.LeftToRight;
+            textBrowser.Alignment = scrText.GetJoinedText(bookNum).RightToLeft ? AlignmentFlag.AlignRight | AlignmentFlag.AlignAbsolute : AlignmentFlag.AlignLeft;
             currentBook = bookNum;
 
             StyleSheetHelper.Get(scrText, bookNum); // Load cache on the main thread.
 
+            BeginViewUpdate();
             if (MainWindow.Async)
             {
                 var thread = new LoadingThread(this, bookNum);
@@ -280,31 +326,30 @@ namespace ParatextQtPOC
             Debug.Assert(QThread.CurrentThread == QCoreApplication.Instance.Thread, "This was not called on the main thread (for some reason)");
             Debug.Assert(workDocument.Thread == QThread.CurrentThread, "Failed to move document to main thread (for some reason): " + scrText.Name);
 
-            textBrowser.CursorPositionChanged -= TextBrowser_CursorPositionChanged;
-
             QTextDocument prevDocument = textBrowser.Document;
             textBrowser.Document = workDocument;
             workDocument = null;
             prevDocument?.Dispose();
 
-            textBrowser.CursorPositionChanged += TextBrowser_CursorPositionChanged;
             textBrowser.Document.ClearUndoRedoStacks();
             textBrowser.Document.Modified = false;
 
-            sw.Stop();
-            Trace.TraceInformation($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+            if (lastPosition >= 0)
+            {
+                //sw.Restart();
+                QTextCursor cursor = new QTextCursor(textBrowser.Document);
+                cursor.SetPosition(lastPosition);
+                textBrowser.TextCursor = cursor;
+                textBrowser.EnsureCursorVisible();
+                //sw.Stop();
+                //Trace.TraceInformation($"Restore cursor {Canon.BookNumberToId(currentBook)} for {scrText.Name} took {sw.ElapsedMilliseconds}ms");
+                lastPosition = -1;
+            }
 
-            if (lastPosition <= 0)
-                return;
+            EndViewUpdate();
 
-            sw.Restart();
-            QTextCursor cursor = new QTextCursor(textBrowser.Document);
-            cursor.SetPosition(lastPosition);
-            textBrowser.TextCursor = cursor;
-            textBrowser.EnsureCursorVisible();
             sw.Stop();
-            Trace.TraceInformation($"Restore cursor {Canon.BookNumberToId(currentBook)} for {scrText.Name} took {sw.ElapsedMilliseconds}ms");
-            lastPosition = -1;
+            Trace.TraceInformation($"Updating browser copy of {Canon.BookNumberToId(bookNum)} from {scrText.Name} took {sw.ElapsedMilliseconds}ms ({textBrowser.Document.BlockCount} paragraphs)");
         }
 
         private void FormatText(int bookNum, List<UsfmToken> tokens, QTextCursor cursor)
@@ -321,9 +366,16 @@ namespace ParatextQtPOC
 
         private void RefreshViewForVerse(VerseRef reference)
         {
+            if (reference.IsDefault)
+                return;
+            Stopwatch sw = Stopwatch.StartNew();
+
             FindBlocksForReference(reference, out SafeTextBlock startBlock, out SafeTextBlock endBlock, out string usfm);
             if (startBlock == null || endBlock == null)
+            {
+                sw.Stop();
                 return; // reference was not in the document
+            }
 
             VerseRef startRef = ReferenceFromBlock(startBlock, startBlock.Position);
 
@@ -332,6 +384,7 @@ namespace ParatextQtPOC
 
             int previousPosition = textBrowser.TextCursor.Position;
             QTextCursor cursor = new QTextCursor(startBlock);
+            BeginViewUpdate();
             cursor.BeginEditBlock();
 
             // Select the blocks and delete them from the view
@@ -359,12 +412,19 @@ namespace ParatextQtPOC
             QTextCursor newCursor = new QTextCursor(textBrowser.Document);
             newCursor.SetPosition(previousPosition);
             textBrowser.TextCursor = newCursor;
+
+            EndViewUpdate();
+
+            sw.Stop();
+            Trace.TraceInformation($"Quick update for {reference} took {sw.ElapsedMilliseconds}ms");
         }
 
         private void FindBlocksForReference(VerseRef reference,
             out SafeTextBlock startBlock, out SafeTextBlock endBlock,
             out string containedUsfm)
         {
+            // ENHANCE: Do a binary search - should be much faster
+
             StringBuilder usfm = new StringBuilder();
             SafeTextBlock theStartBlock = null;
             SafeTextBlock theEndBlock = null;
@@ -452,34 +512,51 @@ namespace ParatextQtPOC
                 return true;
             });
 
-            return lastBlockReference != null ? new VerseRef(lastBlockReference, scrText.Settings.Versification) : new VerseRef();
+            return lastBlockReference != null ? new VerseRef(lastBlockReference, scrText.Settings.Versification) : new VerseRef(scrText.Settings.Versification);
         }
 
         private void ScrollVerseIntoView(VerseRef verseRef)
         {
             Debug.Assert(verseRef.Versification == scrText.Settings.Versification);
 
+            // ENHANCE: Do a binary search - should be much faster
+
             Stopwatch sw = Stopwatch.StartNew();
 
             int verseFragmentOffset = -1;
-            textBrowser.Document.IterateBlocks(block =>
+
+            SafeTextBlock blockWithReference = null;
+            SafeTextBlock previousBlock = null;
+            textBrowser.Document.IterateSafeBlocks(block =>
             {
-                block.IterateFragments(fragment =>
+                VerseRef blockStartRef = ReferenceFromBlock(block, block.Position);
+                if (blockStartRef >= verseRef)
                 {
-                    using QTextCharFormat charFormat = fragment.CharFormat;
-                    if (!charFormat.HasProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY))
-                        return true;
-
-                    VerseRef fragmentVerseRef = new VerseRef(charFormat.StringProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY), scrText.Settings.Versification);
-                    if (!verseRef.OverlapsAny(fragmentVerseRef))
-                        return true;
-
-                    verseFragmentOffset = fragment.Position + fragment.Length;
+                    blockWithReference = previousBlock ?? block;
                     return false;
-                });
+                }
 
-                return verseFragmentOffset == -1;
+                previousBlock = block;
+                return true;
             });
+
+            if (blockWithReference == null)
+                return; // Couldn't find block with reference
+
+            ((QTextBlock)blockWithReference).IterateFragments(fragment =>
+            {
+                using QTextCharFormat charFormat = fragment.CharFormat;
+                if (!charFormat.HasProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY))
+                    return true;
+
+                VerseRef fragmentVerseRef = new VerseRef(charFormat.StringProperty(TextEditUsfmLoad.VERSE_ID_PROPERTY), scrText.Settings.Versification);
+                if (!verseRef.OverlapsAny(fragmentVerseRef))
+                    return true;
+
+                verseFragmentOffset = fragment.Position + fragment.Length;
+                return false;
+            });
+            blockWithReference.Dispose();
 
             if (verseFragmentOffset == -1)
                 return;

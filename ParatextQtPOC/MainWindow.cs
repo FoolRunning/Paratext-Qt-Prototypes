@@ -90,11 +90,10 @@ namespace ParatextQtPOC
 
             AddToolBar(toolbar);
             
-            Resize(1024, 768);
+            Resize(1280, 720);
 
             timer = new TraceTimer(this);
-            timer.Interval = 1000;
-            timer.Start();
+            timer.Start(1000);
         }
         #endregion
 
@@ -361,7 +360,8 @@ namespace ParatextQtPOC
         }
         #endregion
 
-        internal class TraceTimer : QTimer
+        #region TraceTimer class
+        private class TraceTimer : QTimer
         {
             private DateTime lastTime;
 
@@ -374,9 +374,10 @@ namespace ParatextQtPOC
             {
                 DateTime now = DateTime.Now;
                 TimeSpan elapsed = now - lastTime;
-                Trace.TraceInformation($"It is now {now} and {elapsed.TotalSeconds}secs passed since last tick");
+                Trace.TraceInformation($"It is now {now} and {elapsed.TotalSeconds:F3}secs passed since last tick");
                 lastTime = now;
             }
         }
+        #endregion
     }
 }
