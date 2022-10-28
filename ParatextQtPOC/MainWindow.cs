@@ -282,6 +282,7 @@ namespace ParatextQtPOC
             if (string.IsNullOrEmpty(TestCase))
                 return;
 
+            Program.LogSinceStartTime($"Starting to create windows for test case: {TestCase}");
             string[] testResources = new[]
             {
                 "NAV", "NIV84", "WEB", "RSV", "BENCLBSI", "HERV", "JCB", "VUL83", "HEB/GRK", "RVR1960", "ESVUS16", "CCB"
@@ -315,6 +316,7 @@ namespace ParatextQtPOC
 			int chapterNum = parts.Length < 3 ? 1 : int.Parse(parts[2]);
 			int verseNum = parts.Length < 4 ? 1 : int.Parse(parts[3]);
 			OpenBook(bookNum, chapterNum, verseNum);
+            Program.LogSinceStartTime($"Completed creating windows for test case: {TestCase}");
         }
 
         #endregion

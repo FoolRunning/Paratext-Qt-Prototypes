@@ -10,7 +10,7 @@ using QtWidgets;
 
 namespace ParatextQtPOC
 {
-    class Program
+    public static class Program
     {
         [STAThread]
         static void Main(string[] args)
@@ -19,7 +19,7 @@ namespace ParatextQtPOC
             var logListener = new LogTraceListener(Path.Combine(Environment.CurrentDirectory, "ParatextQtPoc.log"), 10 * 1024 * 1024);
             Trace.Listeners.Add(logListener);
             Trace.AutoFlush = true; // will often just kill program, so want to always write to disk.
-            Trace.TraceInformation("Starting proof of concept for QT");
+            LogSinceStartTime("Starting proof of concept for QT");
 
             ScrTextCollection.Implementation = new ParatextScrTextCollection(null, null);
             ParatextData.Initialize();
@@ -27,6 +27,7 @@ namespace ParatextQtPOC
             QApplication.Style = new ParatextQtStyle();
             QGuiApplication.Palette = QApplication.Style.StandardPalette;
 
+            LogSinceStartTime("Completed ParatextData initialization");
             int count = 0;
             unsafe
             {
@@ -45,6 +46,12 @@ namespace ParatextQtPOC
 
             QApplication.Exec();
             Trace.Close();
+        }
+
+        public static void LogSinceStartTime(string message)
+        {
+            TimeSpan sinceStartTime = DateTime.Now - Process.GetCurrentProcess().StartTime;
+            Trace.TraceInformation($"Since process start: {sinceStartTime.TotalSeconds:F3}, {message}");
         }
     }
 }
