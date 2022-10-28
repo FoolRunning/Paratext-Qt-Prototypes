@@ -45,6 +45,7 @@ namespace ParatextQtPOC
             textEdit.Show();
 
             QApplication.Exec();
+            LogSinceStartTime("Closing application");
             Trace.Close();
         }
 
